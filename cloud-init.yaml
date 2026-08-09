@@ -1,0 +1,134 @@
+#cloud-config
+# Server prep for the sissy host. Targets Ubuntu 24.04 LTS only.
+# Docker, a 'deploy' user, fail2ban, key-only SSH. After boot: copy sissy/ to
+# /opt/sissy, fill in secrets, run ./bootstrap.sh.
+# Manual by design: DNS, secrets, and the network firewall (see README).
+
+package_update: true
+package_upgrade: true
+
+users:
+  # Keeps the image's default user, which is what the provider attaches its
+  # injected SSH keys to. Drop it and there is nothing for runcmd to copy.
+  - default
+  - name: deploy
+    groups: [docker, sudo]
+    shell: /bin/bash
+    sudo: ["ALL=(ALL) NOPASSWD:ALL"]
+    # Keys are copied from the provider's injection below, so none is committed.
+    # If your provider injects nothing, uncomment:
+    # ssh_import_id: [gh:your-github-username]
+
+write_files:
+  - path: /etc/docker/daemon.json
+    content: |
+      {
+        "log-driver": "json-file",
+        "log-opts": { "max-size": "10m", "max-file": "3" }
+      }
+
+  # Tuning only -- the package ships the [sshd] jail enabled and working.
+  - path: /etc/fail2ban/jail.local
+    content: |
+      [DEFAULT]
+      bantime  = 1h
+      findtime = 10m
+      maxretry = 5
+      # ignoreip = 127.0.0.1/8 ::1 203.0.113.4   # your admin IP
+
+      [sshd]
+      enabled = true
+
+  # Login banner: stack status, tags, domains, host vitals.
+  - path: /etc/update-motd.d/99-sissy
+    permissions: '0755'
+    content: |
+      #!/bin/sh
+      D=/opt/sissy
+      val() { sed -n "s/^$2=//p" "$D/$1/.env" 2>/dev/null | head -1; }
+      up()  { docker ps -q --filter "label=com.docker.compose.project=$1" 2>/dev/null | wc -l | tr -d ' '; }
+
+      rule='────────────────────────────────────────────────────────────────'
+      printf '\n  \033[1msissy\033[0m %s\n  \033[2m%s\033[0m\n\n' "$(hostname)" "$rule"
+
+      for s in prod stage; do
+        [ -d "$D/$s" ] && printf '  %-8s %2s up   tag %-12s https://%s\n' \
+          "$s" "$(up shop-$s)" "$(val $s TAG)" "$(val $s DOMAIN)"
+      done
+      [ -d "$D/edge" ] && printf '  %-8s %2s up\n' edge "$(up shop-edge)"
+
+      sick=$(docker ps --filter health=unhealthy --format '{{.Names}}' 2>/dev/null | tr '\n' ' ')
+      [ -n "$sick" ] && printf '  \033[31mUNHEALTHY\033[0m %s\n' "$sick"
+
+      set -- $(df -h / | awk 'NR==2{print $5, $2}')
+      printf '\n  %-7s disk %s of %s   mem %s   load %s\n' host "$1" "$2" \
+        "$(free -h | awk '/^Mem:/{print $3"/"$2}')" "$(cut -d' ' -f1-3 /proc/loadavg)"
+
+      printf '  %-7s %s/<stack>/{compose.yaml,.env,.env.local}\n' paths "$D"
+      printf '  %-7s %s/<stack>/data/{media,files,thumbnail,theme,sitemap,log,mysql}\n' '' "$D"
+      printf '  %-7s cd %s && ./deploy.sh <stack> <tag> | ./bootstrap.sh | ./refresh-stage.sh\n' run "$D"
+      printf '  %-7s docker compose -f %s/prod/compose.yaml logs -f web\n\n' logs "$D"
+
+runcmd:
+  # --- Docker Engine + compose plugin (official convenience repo) ---
+  - install -m 0755 -d /etc/apt/keyrings
+  - curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+  - chmod a+r /etc/apt/keyrings/docker.asc
+  - >
+    echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc]
+    https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo $VERSION_CODENAME) stable"
+    > /etc/apt/sources.list.d/docker.list
+  - apt-get update
+  - apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin fail2ban apache2-utils
+  - systemctl enable --now docker
+
+  # --- shared network + project dir ---
+  - docker network create edge || true
+  - mkdir -p /opt/sissy
+  - chown -R deploy:deploy /opt/sissy
+
+  # No host firewall on purpose: ufw/iptables INPUT does not see Docker traffic
+  # (dockerd DNATs in nat/PREROUTING and forwards past INPUT), so it would imply
+  # protection it cannot give. Inbound filtering belongs at the network level --
+  # a Hetzner Cloud Firewall is REQUIRED, see README.
+  - systemctl enable --now fail2ban    # verify: fail2ban-client status sshd
+
+  # --- SSH: import the provider's keys, then lock down ---
+  # Hetzner writes console-selected keys to root. awk drops any leading options:
+  # disable_root prefixes a command="..." that would make deploy's login print a
+  # notice and exit.
+  - |
+    set -eu
+    SRC=/root/.ssh/authorized_keys
+    [ -s "$SRC" ] || SRC=$(ls -1 /home/*/.ssh/authorized_keys 2>/dev/null | grep -v '^/home/deploy/' | head -1 || true)
+    if [ -n "${SRC:-}" ] && [ -s "$SRC" ]; then
+      install -d -m 700 -o deploy -g deploy /home/deploy/.ssh
+      awk '{for(i=1;i<=NF;i++) if($i ~ /^(ssh-|ecdsa-|sk-)/) {k=$i; for(j=i+1;j<=NF;j++) k=k" "$j; print k; break}}' "$SRC" \
+        > /home/deploy/.ssh/authorized_keys
+      chown deploy:deploy /home/deploy/.ssh/authorized_keys
+      chmod 600 /home/deploy/.ssh/authorized_keys
+      echo "ssh: imported $(wc -l < /home/deploy/.ssh/authorized_keys) key(s) for 'deploy' from $SRC"
+    else
+      echo "WARNING: no injected keys found -- 'deploy' has no SSH access" >&2
+    fi
+
+  # Applied only if that import worked. Not cloud-init's ssh_pwauth/disable_root:
+  # those fire earlier and unconditionally, bricking a box that got no keys.
+  - |
+    set -eu
+    if [ ! -s /home/deploy/.ssh/authorized_keys ]; then
+      echo "WARNING: 'deploy' has no keys -- SSH hardening SKIPPED to avoid lockout" >&2
+      exit 0
+    fi
+    cat > /etc/ssh/sshd_config.d/99-hardening.conf <<'EOF'
+    PasswordAuthentication no
+    KbdInteractiveAuthentication no
+    PermitRootLogin no
+    EOF
+    if /usr/sbin/sshd -t; then
+      systemctl reload ssh 2>/dev/null || true
+      echo "ssh: password auth and root login disabled"
+    else
+      rm -f /etc/ssh/sshd_config.d/99-hardening.conf
+      echo "ERROR: sshd config invalid -- hardening reverted" >&2
+    fi

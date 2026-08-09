@@ -1,0 +1,33 @@
+name: shop-edge
+
+services:
+  traefik:
+    image: traefik:v3.7.10
+    command:
+      - --providers.docker=true
+      - --providers.docker.exposedbydefault=false
+      - --providers.docker.network=edge
+      - --entrypoints.web.address=:80
+      - --entrypoints.websecure.address=:443
+      - --entrypoints.web.http.redirections.entrypoint.to=websecure
+      - --entrypoints.web.http.redirections.entrypoint.scheme=https
+      - --certificatesresolvers.le.acme.email=${ACME_EMAIL}
+      - --certificatesresolvers.le.acme.storage=/acme/acme.json
+      - --certificatesresolvers.le.acme.tlschallenge=true
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      # Traefik creates acme.json itself (chmod 600). Just give it the directory.
+      - ./data/acme:/acme
+    restart: unless-stopped
+    networks:
+      - edge
+
+networks:
+  edge:
+    # Shared external network; prod & stage attach to it.
+    # Create once: docker network create edge
+    name: edge
+    external: true

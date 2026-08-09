@@ -1,0 +1,74 @@
+name: shop-stage
+
+x-app: &app
+  image: ghcr.io/vanwittlaer/sissy:${TAG:-latest}
+  env_file: .env.local
+  depends_on:
+    database:
+      condition: service_healthy
+  restart: unless-stopped
+  networks:
+    - internal
+
+# See prod/compose.yaml for why each of these is shared between web and worker,
+# and why public/bundles and var/cache are deliberately absent.
+x-app-volumes: &app-volumes
+  - ./data/media:/var/www/html/public/media
+  - ./data/thumbnail:/var/www/html/public/thumbnail
+  - ./data/theme:/var/www/html/public/theme
+  - ./data/sitemap:/var/www/html/public/sitemap
+  - ./data/files:/var/www/html/files
+  - ./data/log:/var/www/html/var/log
+
+services:
+  web:
+    <<: *app
+    volumes: *app-volumes
+    networks:
+      - internal
+      - edge
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=edge
+      - traefik.http.routers.stage.rule=Host(`${DOMAIN}`)
+      - traefik.http.routers.stage.entrypoints=websecure
+      - traefik.http.routers.stage.tls.certresolver=le
+      - traefik.http.routers.stage.middlewares=stage-auth
+      # BASIC_AUTH htpasswd hashes contain '$' — they MUST be doubled to '$$'
+      # in the .env value or compose interpolation eats them and auth fails.
+      - traefik.http.middlewares.stage-auth.basicauth.users=${BASIC_AUTH}
+
+  worker:
+    <<: *app
+    # Single worker on stage — it shares the box with prod.
+    command: php bin/console messenger:consume async low_priority --time-limit=300 --memory-limit=512M
+    volumes: *app-volumes
+
+  scheduler:
+    <<: *app
+    command: php bin/console scheduled-task:run
+    volumes:
+      - ./data/log:/var/www/html/var/log
+
+  database:
+    image: mariadb:11.8
+    environment:
+      MARIADB_DATABASE: shopware
+      MARIADB_USER: shopware
+      MARIADB_PASSWORD: ${DB_PASSWORD}
+      MARIADB_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
+    volumes:
+      - ./data/mysql:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+    networks:
+      - internal
+
+networks:
+  internal:
+  edge:
+    external: true

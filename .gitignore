@@ -1,0 +1,4 @@
+# Never commit real secrets or runtime state
+**/.env
+**/.env.local
+**/data/

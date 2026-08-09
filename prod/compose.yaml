@@ -1,0 +1,106 @@
+name: shop-prod
+
+x-app: &app
+  image: ghcr.io/vanwittlaer/sissy:${TAG:-latest}
+  env_file: .env.local
+  depends_on:
+    database:
+      condition: service_healthy
+  restart: unless-stopped
+  networks:
+    - internal
+
+# Everything Shopware writes at runtime, shared by web and worker. These are
+# not just persistence: worker writes thumbnails and sitemaps that web must
+# serve, so an unshared path silently means "generated, never visible".
+#   media/thumbnail  uploads + generated thumbs
+#   theme            theme:compile output (paired with files/theme-config)
+#   sitemap          written by the worker's scheduled task, served by web
+#   files            PRIVATE filesystem: invoice PDFs, import/export, theme-config
+# Deliberately NOT here:
+#   public/bundles   baked at build by assets:install -- bind-mounting an empty
+#                    host dir over it would HIDE the image's copy (bind mounts
+#                    don't seed from the image the way named volumes do)
+#   var/cache        per-container by design; sharing it across containers breaks
+x-app-volumes: &app-volumes
+  - ./data/media:/var/www/html/public/media
+  - ./data/thumbnail:/var/www/html/public/thumbnail
+  - ./data/theme:/var/www/html/public/theme
+  - ./data/sitemap:/var/www/html/public/sitemap
+  - ./data/files:/var/www/html/files
+  - ./data/log:/var/www/html/var/log
+
+services:
+  web:
+    <<: *app
+    volumes: *app-volumes
+    networks:
+      - internal
+      - edge
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=edge
+      - traefik.http.routers.prod.rule=Host(`${DOMAIN}`)
+      - traefik.http.routers.prod.entrypoints=websecure
+      - traefik.http.routers.prod.tls.certresolver=le
+      - traefik.http.services.prod.loadbalancer.server.port=8000
+
+  worker:
+    <<: *app
+    # Risk W: verify a worker actually consumes and does NOT boot nginx.
+    # Mirror whatever start_command your Coolify apps.tf settled on.
+    # Must consume BOTH async and low_priority (separate Doctrine queues).
+    command: php bin/console messenger:consume async low_priority --time-limit=300 --memory-limit=512M
+    volumes: *app-volumes
+    deploy:
+      replicas: 2
+
+  scheduler:
+    <<: *app
+    # The blocking loop IS the long-running process (no --no-wait here).
+    command: php bin/console scheduled-task:run
+    volumes:
+      - ./data/log:/var/www/html/var/log
+
+  ops-shell:
+    image: ghcr.io/vanwittlaer/shopware-ops-shell:latest
+    # ops-shell is bash + shopware-cli + rclone. It has NO app code and cannot
+    # run bin/console. .env.local is provided only for DB creds (mariadb-dump).
+    env_file: .env.local
+    # SAFE DEFAULT keep-alive. Check the shopware-ops-shell repo README: if the
+    # image self-schedules rclone backups via its own entrypoint, remove this line.
+    command: ["sleep", "infinity"]
+    volumes:
+      - ./data/media:/var/www/html/public/media:ro       # read-only: backups only
+      - ./data/files:/var/www/html/files:ro              # invoices etc. -- must be backed up
+      - ./data/rclone:/root/.config/rclone               # rclone remotes
+      # thumbnail/theme/sitemap omitted: all regenerable from media + DB
+    depends_on:
+      database:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - internal
+
+  database:
+    image: mariadb:11.8
+    environment:
+      MARIADB_DATABASE: shopware
+      MARIADB_USER: shopware
+      MARIADB_PASSWORD: ${DB_PASSWORD}
+      MARIADB_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
+    volumes:
+      - ./data/mysql:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+    networks:
+      - internal
+
+networks:
+  internal:
+  edge:
+    external: true
