@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Copy the prod database into stage, then run the deployment helper on stage.
-# Routes through the host because prod's ops-shell/db and stage's db live on
+# Routes through the host because prod's and stage's databases live on
 # separate internal networks and can't reach each other directly.
 #
 # Reads DB passwords from prod/.env and stage/.env.
