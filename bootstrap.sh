@@ -38,6 +38,10 @@ SUDO=""; [[ $EUID -ne 0 ]] && SUDO="sudo"
 prep_dirs() {
   local dir=$1
   # Everything the app writes. Keep in sync with x-app-volumes in compose.yaml.
+  # data/mysql is deliberately NOT in this list: it belongs to the mariadb
+  # image's own user (uid 999). chown it to 82 and MariaDB starts but cannot
+  # create tables -- "errno: 13 Permission denied" — leaving a half-written
+  # data dictionary behind.
   local app_dirs=(media thumbnail theme sitemap files log)
   mkdir -p "${app_dirs[@]/#/$dir/data/}" "$dir/data/mysql"
   $SUDO chown -R 82:82 "${app_dirs[@]/#/$dir/data/}"

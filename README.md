@@ -231,6 +231,9 @@ Only the DB is copied. For stage to match prod's media and documents:
 
 ## Operational notes
 
+- **Never chown `data/mysql`.** It belongs to the mariadb image's user (uid 999);
+  giving it to 82 lets MariaDB start but not create tables (`errno: 13`), which
+  corrupts the data dictionary. `prep_dirs` deliberately skips it.
 - **The bind-mount dirs must be owned by UID 82** or the app fails with
   Permission denied (logging first). `bootstrap.sh:prep_dirs` creates and chowns
   them before Docker can make them root-owned — extend that list if you add a
