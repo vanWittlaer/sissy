@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # One-shot / idempotent bootstrap for the whole box.
-# Brings up edge + every app stack, waits for each DB, then runs the
-# deployment helper (which INSTALLS Shopware on an empty DB and runs
-# migrations on an existing one — same command either way).
+# Brings up edge + every app stack. Each stack's `setup` container INSTALLS
+# Shopware on an empty DB and migrates an existing one, before the app
+# containers are allowed to start.
 #
 # Usage:  ./bootstrap.sh [stack ...]        (default: prod stage)
 set -euo pipefail
@@ -59,10 +59,10 @@ for stack in "${STACKS[@]}"; do
   prep_dirs "$stack"
   local_file="$stack/compose.yaml"
   docker compose -f "$local_file" pull
+  # `up -d` blocks on the setup container, which installs on an empty DB and
+  # migrates on an existing one before web/worker/scheduler are allowed to start.
   docker compose -f "$local_file" up -d
   wait_healthy "$local_file" database
-  echo "  running deployment helper (install-or-migrate)"
-  docker compose -f "$local_file" exec -T web /var/www/html/vendor/bin/shopware-deployment-helper run -n
 done
 
 echo "==> Done. Point DNS at this host if you haven't; Traefik will issue certs on first hit."

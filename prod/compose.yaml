@@ -6,6 +6,8 @@ x-app: &app
   depends_on:
     database:
       condition: service_healthy
+    setup:
+      condition: service_completed_successfully
   restart: unless-stopped
   networks:
     - internal
@@ -31,6 +33,17 @@ x-app-volumes: &app-volumes
   - ./data/log:/var/www/html/var/log
 
 services:
+  # Install-or-migrate before any app container starts. Runs to completion and
+  # exits; the explicit depends_on overrides the anchor's (no self-dependency).
+  setup:
+    <<: *app
+    entrypoint: /setup
+    restart: "no"
+    volumes: *app-volumes
+    depends_on:
+      database:
+        condition: service_healthy
+
   web:
     <<: *app
     volumes: *app-volumes

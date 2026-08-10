@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Shopware-side update for one stack: pull new image, recreate all services
-# (web/worker/scheduler onto new code), then migrate + theme-compile INSIDE
-# the live web container (no S3 -> compiled theme must land on the serving fs).
+# Shopware-side update for one stack: pull the new image and recreate services.
+# The `setup` container runs install-or-migrate + theme compile and must exit 0
+# before web/worker/scheduler start, so `up -d` is the whole deploy.
 #
 # Usage:  ./deploy.sh <stack> [tag]
 #   ./deploy.sh prod 1a2b3c4
@@ -16,12 +16,10 @@ FILE="$STACK/compose.yaml"
 
 echo "==> Deploying $STACK @ $TAG"
 TAG="$TAG" docker compose -f "$FILE" pull
-TAG="$TAG" docker compose -f "$FILE" up -d          # recreates web/worker/scheduler on new image
-
-echo "==> Migrate + theme-compile (inside live web)"
-docker compose -f "$FILE" exec -T web /var/www/html/vendor/bin/shopware-deployment-helper run -n
+TAG="$TAG" docker compose -f "$FILE" up -d
 
 echo "==> $STACK now on $TAG"
-# NOTE: this flips new code live BEFORE migrations apply — a brief new-code-vs-old-schema
-# window. Acceptable for single-node; true zero-downtime needs blue-green.
-# Persist TAG for next run by writing it into $STACK/.env if you want it sticky.
+# Migrations apply while the OLD containers still serve, then the new ones start
+# — brief old-code-vs-new-schema, which Shopware tolerates far better than the
+# reverse. Still not zero-downtime: theme compile happens in setup, and web
+# restarts. Persist TAG in $STACK/.env if you want it sticky.

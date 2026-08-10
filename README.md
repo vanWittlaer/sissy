@@ -40,7 +40,9 @@ the image) and `var/cache` (per-container by design).
 - **No horizontal web scaling.** Filesystem cache + native sessions are
   per-container. **Keep `web` at 1 replica** (workers scale fine). Add Redis the
   day you need a second web node.
-- No RabbitMQ throughput/observability, no ES search, no zero-downtime deploys.
+- No RabbitMQ throughput/observability, no ES search, no zero-downtime deploys —
+  a `setup` container migrates before the app containers start, so the ordering
+  is safe, but `web` still restarts.
 - You keep: the same image, a DB-backed queue that works, real workers, TLS,
   and a deploy you can read top to bottom.
 
@@ -168,8 +170,9 @@ passwords and `APP_SECRET`). `bootstrap.sh` aborts if either is missing.
    ```bash
    ./bootstrap.sh            # edge + prod + stage; installs Shopware on empty DBs
    ```
-   On an empty database the deployment helper *installs* Shopware; on an existing
-   one it runs migrations — same command. Traefik issues certs on first HTTPS hit.
+   The `setup` container installs Shopware on an empty database and migrates an
+   existing one, before web/worker/scheduler start. Traefik issues certs on
+   first HTTPS hit.
 
 Effort: ~½–1 day to adapt cloud-init + scripts to your registry/domains once.
 Afterwards a new server is: DNS + secrets + `./bootstrap.sh`. DNS and secrets
