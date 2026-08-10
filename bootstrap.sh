@@ -11,11 +11,24 @@ cd "$(dirname "$0")"
 STACKS=("${@:-prod stage}")
 read -r -a STACKS <<<"${STACKS[*]}"
 
+# .env.local is gitignored, so it is hand-written on every host and silently
+# drifts. A missing key here doesn't fail the boot, it just makes the app behave
+# subtly wrong (http:// asset URLs, wrong canonical host), so warn loudly.
+REQUIRED_LOCAL=(APP_ENV APP_URL APP_SECRET INSTANCE_ID DATABASE_URL LOCK_DSN SYMFONY_TRUSTED_PROXIES)
+REQUIRED_ENV=(TAG DOMAIN DB_PASSWORD DB_ROOT_PASSWORD)
+
 require_env() {
-  local dir=$1
+  local dir=$1 key missing=0
   for f in .env .env.local; do
     [[ -f "$dir/$f" ]] || { echo "ERROR: $dir/$f missing (copy from $f.example)" >&2; exit 1; }
   done
+  for key in "${REQUIRED_ENV[@]}"; do
+    grep -qE "^${key}=.+" "$dir/.env" || { echo "WARNING: $dir/.env has no $key" >&2; missing=1; }
+  done
+  for key in "${REQUIRED_LOCAL[@]}"; do
+    grep -qE "^${key}=.+" "$dir/.env.local" || { echo "WARNING: $dir/.env.local has no $key" >&2; missing=1; }
+  done
+  [[ $missing -eq 0 ]] || echo "  ^ compare against $dir/.env.local.example before continuing" >&2
 }
 
 # Pre-create bind-mount dirs with correct ownership. If Docker creates them it
