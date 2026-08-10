@@ -52,7 +52,7 @@ services:
   worker:
     <<: *app
     # Single worker on stage — it shares the box with prod.
-    command: php bin/console messenger:consume async low_priority --time-limit=300 --memory-limit=512M
+    command: php bin/console messenger:consume webhook async low_priority --time-limit=300 --memory-limit=512M
     volumes: *app-volumes
 
   scheduler:
