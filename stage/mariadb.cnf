@@ -1,0 +1,6 @@
+[mysqld]
+# Smaller pool than prod — both DBs share one box.
+innodb_buffer_pool_size=256M
+group_concat_max_len=320000
+sql_mode=STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION
+innodb_lock_wait_timeout=120

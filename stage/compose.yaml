@@ -59,6 +59,7 @@ services:
       MARIADB_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
     volumes:
       - ./data/mysql:/var/lib/mysql
+      - ./mariadb.cnf:/etc/mysql/conf.d/99-sissy.cnf:ro
     healthcheck:
       test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
       interval: 5s
