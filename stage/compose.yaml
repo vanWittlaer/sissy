@@ -44,10 +44,20 @@ services:
       - traefik.http.routers.stage.rule=Host(`${DOMAIN}`)
       - traefik.http.routers.stage.entrypoints=websecure
       - traefik.http.routers.stage.tls.certresolver=le
+      - traefik.http.routers.stage.service=stage
       - traefik.http.routers.stage.middlewares=stage-auth
+      - traefik.http.services.stage.loadbalancer.server.port=8000
       # BASIC_AUTH htpasswd hashes contain '$' — they MUST be doubled to '$$'
       # in the .env value or compose interpolation eats them and auth fails.
       - traefik.http.middlewares.stage-auth.basicauth.users=${BASIC_AUTH}
+      # /api is exempt: the admin sends `Authorization: Bearer`, which replaces
+      # the Basic credentials, so basicauth 401s and the browser re-prompts
+      # forever. Shopware's OAuth guards /api on its own.
+      - traefik.http.routers.stage-api.rule=Host(`${DOMAIN}`) && PathPrefix(`/api`)
+      - traefik.http.routers.stage-api.priority=100
+      - traefik.http.routers.stage-api.entrypoints=websecure
+      - traefik.http.routers.stage-api.tls.certresolver=le
+      - traefik.http.routers.stage-api.service=stage
 
   worker:
     <<: *app
