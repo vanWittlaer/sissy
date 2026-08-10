@@ -71,17 +71,18 @@ services:
 
   worker:
     <<: *app
-    # Risk W: verify a worker actually consumes and does NOT boot nginx.
-    # Must consume BOTH async and low_priority (separate Doctrine queues).
-    command: php bin/console messenger:consume webhook async low_priority --time-limit=300 --memory-limit=512M
+    # entrypoint, not command: the image entrypoint is supervisord, which takes
+    # a command as positional args and refuses to start. Must consume ALL three
+    # transports -- dropping one silently strands those messages.
+    entrypoint: ["php", "bin/console", "messenger:consume", "webhook", "async", "low_priority", "--time-limit=300", "--memory-limit=512M"]
     volumes: *app-volumes
     deploy:
       replicas: 2
 
   scheduler:
     <<: *app
-    # The blocking loop IS the long-running process (no --no-wait here).
-    command: php bin/console scheduled-task:run
+    # Blocking loop; same entrypoint reason as worker.
+    entrypoint: ["php", "bin/console", "scheduled-task:run"]
     volumes:
       - ./data/log:/var/www/html/var/log
 

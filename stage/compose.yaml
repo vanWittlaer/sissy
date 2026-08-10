@@ -62,12 +62,12 @@ services:
   worker:
     <<: *app
     # Single worker on stage — it shares the box with prod.
-    command: php bin/console messenger:consume webhook async low_priority --time-limit=300 --memory-limit=512M
+    entrypoint: ["php", "bin/console", "messenger:consume", "webhook", "async", "low_priority", "--time-limit=300", "--memory-limit=512M"]
     volumes: *app-volumes
 
   scheduler:
     <<: *app
-    command: php bin/console scheduled-task:run
+    entrypoint: ["php", "bin/console", "scheduled-task:run"]
     volumes:
       - ./data/log:/var/www/html/var/log
 

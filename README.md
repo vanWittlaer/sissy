@@ -235,9 +235,10 @@ Only the DB is copied. For stage to match prod's media and documents:
   Permission denied (logging first). `bootstrap.sh:prep_dirs` creates and chowns
   them before Docker can make them root-owned — extend that list if you add a
   mount.
-- **Risk W:** confirm a `worker` container actually runs `messenger:consume` and
-  doesn't boot nginx (the shopware docker-base entrypoint decides by args). The
-  command we use is the one Shopware's Docker docs give verbatim.
+- **`worker` and `scheduler` set `entrypoint:`, not `command:`.** The image's
+  entrypoint is supervisord, which treats a command as positional arguments and
+  refuses to start (`positional arguments are not supported`). A `command:` there
+  leaves the container crash-looping while `docker ps` still says "Up".
 - **Workers must consume `async` AND `low_priority`** — separate Doctrine queues;
   dropping `low_priority` silently strands those messages.
 - **Nothing backs anything up.** There is no backup container by design — run
