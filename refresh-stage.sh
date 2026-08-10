@@ -20,6 +20,11 @@ docker compose -f prod/compose.yaml exec -T database \
 echo "==> Running deployment helper on stage"
 docker compose -f stage/compose.yaml exec -T web /var/www/html/vendor/bin/shopware-deployment-helper run -n
 
+# Rewrites sales_channel_domain to stage's host (shopware.staging.sales_channel
+# in the image config) — the dump still carries prod's URLs.
+echo "==> Applying staging mode"
+docker compose -f stage/compose.yaml exec -T web php bin/console system:setup:staging --force
+
 echo "==> Stage refreshed from prod."
 echo "    Reminder: media/thumbnail are NOT copied — stage still serves prod media"
 echo "    only if you sync ./prod/data/media -> ./stage/data/media (rsync) or share it."

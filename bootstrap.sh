@@ -63,6 +63,13 @@ for stack in "${STACKS[@]}"; do
   # migrates on an existing one before web/worker/scheduler are allowed to start.
   docker compose -f "$local_file" up -d
   wait_healthy "$local_file" database
+
+  # Sets core.staging (blocks crawlers, shows the banner) and rewrites sales
+  # channel domains. refresh-stage.sh re-runs it, since a prod dump clears it.
+  if [[ "$stack" == stage ]]; then
+    echo "  applying staging mode"
+    docker compose -f "$local_file" exec -T web php bin/console system:setup:staging --force
+  fi
 done
 
 echo "==> Done. Point DNS at this host if you haven't; Traefik will issue certs on first hit."
