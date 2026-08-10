@@ -25,7 +25,7 @@ x-app-volumes: &app-volumes
 services:
   setup:
     <<: *app
-    entrypoint: /setup
+    entrypoint: ["/var/www/html/vendor/bin/shopware-deployment-helper", "run", "-n"]
     restart: "no"
     volumes: *app-volumes
     depends_on:

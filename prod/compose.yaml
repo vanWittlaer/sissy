@@ -37,7 +37,7 @@ services:
   # exits; the explicit depends_on overrides the anchor's (no self-dependency).
   setup:
     <<: *app
-    entrypoint: /setup
+    entrypoint: ["/var/www/html/vendor/bin/shopware-deployment-helper", "run", "-n"]
     restart: "no"
     volumes: *app-volumes
     depends_on:
@@ -72,7 +72,6 @@ services:
   worker:
     <<: *app
     # Risk W: verify a worker actually consumes and does NOT boot nginx.
-    # Mirror whatever start_command your Coolify apps.tf settled on.
     # Must consume BOTH async and low_priority (separate Doctrine queues).
     command: php bin/console messenger:consume async low_priority --time-limit=300 --memory-limit=512M
     volumes: *app-volumes

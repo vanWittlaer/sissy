@@ -1,10 +1,9 @@
-# Simple Shopware on Docker — single-host, prod + stage
+# sissy — Simple Shopware Server
 
-A barebones alternative to the Coolify topology: one VPS, `docker compose`,
-**no Redis / RabbitMQ / OpenSearch / S3**. MariaDB is the message queue
-(Doctrine transport) and the Symfony lock store; cache and sessions are on the
-local filesystem. Traefik terminates TLS for both a production and a stage
-site on the same box.
+Shopware 6 on a single VPS with nothing but `docker compose`. **No Redis,
+RabbitMQ, OpenSearch or S3**: MariaDB is the message queue (Doctrine transport)
+and the Symfony lock store, cache and sessions live on the local filesystem.
+Traefik terminates TLS for a production and a stage site on the same box.
 
 ```
 edge/      shared Traefik (owns :80/:443, ACME)
@@ -35,16 +34,31 @@ Deliberately *not* mounted: `public/bundles` (baked at build by `assets:install`
 — a bind mount would hide the image's copy, since bind mounts don't seed from
 the image) and `var/cache` (per-container by design).
 
-## What you trade away vs. Coolify
+## Who it's for
 
-- **No horizontal web scaling.** Filesystem cache + native sessions are
-  per-container. **Keep `web` at 1 replica** (workers scale fine). Add Redis the
-  day you need a second web node.
-- No RabbitMQ throughput/observability, no ES search, no zero-downtime deploys —
-  a `setup` container migrates before the app containers start, so the ordering
-  is safe, but `web` still restarts.
-- You keep: the same image, a DB-backed queue that works, real workers, TLS,
-  and a deploy you can read top to bottom.
+Smaller shops that want real production hosting without a platform to operate
+alongside it. One server, one image, three compose files, four scripts — the
+whole thing reads top to bottom in an afternoon.
+
+- **Minimal infrastructure.** A VPS and two DNS records. No orchestrator, no
+  managed services, no state living in a provider's console.
+- **Everything you actually need.** TLS with automatic renewal, a message queue
+  that works, real workers, a scheduler, a gated stage site, and a deploy that
+  migrates before new code serves.
+- **One image for every environment**, promoted by tag — what you tested on
+  stage is the artefact that ships to prod.
+- **The repo is the recovery plan.** Lost the box? `cloud-init.yaml` plus
+  `./bootstrap.sh` rebuild it.
+
+Where the ceiling is, so you can judge the fit:
+
+- **`web` stays at 1 replica.** Filesystem cache and native sessions are
+  per-container; workers scale freely. A second web node means introducing Redis
+  first — a good problem to have, and a small change when you get there.
+- **No search cluster.** Shopware's MySQL search is fine well past the point
+  most shops assume; OpenSearch is the answer when it isn't.
+- **Deploys are not zero-downtime.** The `setup` container migrates before the
+  app containers start, so the ordering is safe, but `web` restarts.
 
 ## Requirements
 
@@ -222,8 +236,8 @@ Only the DB is copied. For stage to match prod's media and documents:
   them before Docker can make them root-owned — extend that list if you add a
   mount.
 - **Risk W:** confirm a `worker` container actually runs `messenger:consume` and
-  doesn't boot nginx (the shopware docker-base entrypoint decides by args).
-  Mirror the `start_command` your Coolify `apps.tf` uses.
+  doesn't boot nginx (the shopware docker-base entrypoint decides by args). The
+  command we use is the one Shopware's Docker docs give verbatim.
 - **Workers must consume `async` AND `low_priority`** — separate Doctrine queues;
   dropping `low_priority` silently strands those messages.
 - **ops-shell** (prod only) is bash + shopware-cli + rclone with **no app code**
