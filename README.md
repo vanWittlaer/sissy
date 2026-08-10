@@ -231,6 +231,20 @@ Only the DB is copied. For stage to match prod's media and documents:
 
 ## Operational notes
 
+- **`mariadb.cnf` must be mode 0644**, and both failure modes are silent: too
+  closed and the server's own user (uid 999) can't read it, too open
+  (group/world *writable*) and MariaDB refuses it as unsafe. Every `docker
+  compose exec` runs as root and will happily read a file the server cannot, so
+  check as the right user:
+  `docker compose -f <stack>/compose.yaml exec --user mysql database cat /etc/mysql/conf.d/99-sissy.cnf`.
+  `bootstrap.sh` sets the mode; a hand-copied file may not have it.
+- **Editing `mariadb.cnf` needs `restart database`.** Compose hashes the compose
+  file, not the contents of what it mounts, so `up -d` leaves the container
+  running and MariaDB only parses config at process start. `my_print_defaults
+  mysqld` shows what it *would* load **as root** — compare against `SHOW
+  VARIABLES LIKE 'innodb_buffer_pool_size%'` to tell "not read" from "read, but
+  stale process". This image includes `conf.d/` *after* `mariadb.conf.d/`, so
+  ours wins.
 - **Never chown `data/mysql`.** It belongs to the mariadb image's user (uid 999);
   giving it to 82 lets MariaDB start but not create tables (`errno: 13`), which
   corrupts the data dictionary. `prep_dirs` deliberately skips it.

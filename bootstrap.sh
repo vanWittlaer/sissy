@@ -30,6 +30,9 @@ require_env() {
     echo "       (if Docker already created a directory there, rmdir it first)" >&2
     exit 1
   }
+  # MariaDB runs as uid 999 and skips a file it cannot read — and refuses one
+  # that is group/world writable. Both silently. 0644 is the only mode that works.
+  $SUDO chmod 644 "$dir/mariadb.cnf"
   for key in "${REQUIRED_ENV[@]}"; do
     grep -qE "^${key}=.+" "$dir/.env" || { echo "WARNING: $dir/.env has no $key" >&2; missing=1; }
   done
