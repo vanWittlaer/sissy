@@ -40,10 +40,21 @@ services:
     labels:
       - traefik.enable=true
       - traefik.docker.network=edge
+      # Canonical host. DOMAIN is the one Shopware serves (www).
       - traefik.http.routers.prod.rule=Host(`${DOMAIN}`)
       - traefik.http.routers.prod.entrypoints=websecure
       - traefik.http.routers.prod.tls.certresolver=le
+      - traefik.http.routers.prod.service=prod
       - traefik.http.services.prod.loadbalancer.server.port=8000
+      # DOMAIN_REDIRECT (bare host) gets its own cert, then 301s to DOMAIN.
+      - traefik.http.routers.prod-redirect.rule=Host(`${DOMAIN_REDIRECT}`)
+      - traefik.http.routers.prod-redirect.entrypoints=websecure
+      - traefik.http.routers.prod-redirect.tls.certresolver=le
+      - traefik.http.routers.prod-redirect.service=prod
+      - traefik.http.routers.prod-redirect.middlewares=prod-canonical
+      - traefik.http.middlewares.prod-canonical.redirectregex.regex=^https?://[^/]+/?(.*)
+      - traefik.http.middlewares.prod-canonical.redirectregex.replacement=https://${DOMAIN}/$${1}
+      - traefik.http.middlewares.prod-canonical.redirectregex.permanent=true
 
   worker:
     <<: *app

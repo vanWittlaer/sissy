@@ -95,6 +95,20 @@ Both MariaDBs sit on the `internal` network with no `ports:` at all, which is
 what actually keeps them off the internet. `fail2ban` still runs for SSH
 brute-force, and works fine without ufw.
 
+## www and non-www (prod)
+
+`DOMAIN` is canonical and what Shopware serves; `DOMAIN_REDIRECT` gets its own
+certificate and 301s to it, path and query preserved. Swap the two values to
+make the bare domain canonical instead.
+
+Both need A-records, since Let's Encrypt validates each host separately. The
+`$$` in the redirect replacement is deliberate — compose eats a single `$`, and
+Traefik must receive `${1}`.
+
+Shopware has to agree, or it will redirect back: `APP_URL=https://www.…` in
+`.env.local`, and `sales_channel_domain.url` set to the same. Stage keeps a
+single host; copy the two `prod-redirect` labels over if it ever needs both.
+
 ## Two env files per stack (the #1 compose gotcha)
 
 Neither is mounted. Both are read by the `docker compose` CLI **on the host**,
