@@ -48,7 +48,12 @@ the image) and `var/cache` (per-container by design).
 
 - **Ubuntu 24.04 LTS** host, **≥ 8 GB RAM** (two MariaDBs + ~10 containers).
 - DNS A-records for the prod and stage hostnames → this host.
-- The image published to a registry your host can pull.
+- The image published where the host can pull it. GHCR packages inherit the
+  repo's visibility and start **private**, so either flip the package to public
+  (Packages → sissy → Package settings → Change visibility) or, as `deploy` on
+  the host, `echo <PAT> | docker login ghcr.io -u <user> --password-stdin` with
+  a `read:packages` token. Otherwise `deploy.sh` fails on pull with
+  `error from registry: unauthorized`. Applies to `shopware-ops-shell` too.
 - **A network-level firewall in front of the host** (see below) — not optional.
 
 ## Firewall: network level, not host level
