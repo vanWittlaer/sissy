@@ -85,26 +85,6 @@ services:
     volumes:
       - ./data/log:/var/www/html/var/log
 
-  ops-shell:
-    image: ghcr.io/vanwittlaer/shopware-ops-shell:latest
-    # ops-shell is bash + shopware-cli + rclone. It has NO app code and cannot
-    # run bin/console. .env.local is provided only for DB creds (mariadb-dump).
-    env_file: .env.local
-    # SAFE DEFAULT keep-alive. Check the shopware-ops-shell repo README: if the
-    # image self-schedules rclone backups via its own entrypoint, remove this line.
-    command: ["sleep", "infinity"]
-    volumes:
-      - ./data/media:/var/www/html/public/media:ro       # read-only: backups only
-      - ./data/files:/var/www/html/files:ro              # invoices etc. -- must be backed up
-      - ./data/rclone:/root/.config/rclone               # rclone remotes
-      # thumbnail/theme/sitemap omitted: all regenerable from media + DB
-    depends_on:
-      database:
-        condition: service_healthy
-    restart: unless-stopped
-    networks:
-      - internal
-
   database:
     image: mariadb:11.8
     environment:

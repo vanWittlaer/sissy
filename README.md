@@ -7,7 +7,7 @@ Traefik terminates TLS for a production and a stage site on the same box.
 
 ```
 edge/      shared Traefik (owns :80/:443, ACME)
-prod/      web + worker×2 + scheduler + ops-shell + mariadb
+prod/      web + worker×2 + scheduler + mariadb
 stage/     web + worker + scheduler + mariadb   (basic-auth gated)
 ```
 
@@ -69,7 +69,7 @@ Where the ceiling is, so you can judge the fit:
   (Packages → sissy → Package settings → Change visibility) or, as `deploy` on
   the host, `echo <PAT> | docker login ghcr.io -u <user> --password-stdin` with
   a `read:packages` token. Otherwise `deploy.sh` fails on pull with
-  `error from registry: unauthorized`. Applies to `shopware-ops-shell` too.
+  `error from registry: unauthorized`.
 - **A network-level firewall in front of the host** (see below) — not optional.
 
 ## Firewall: network level, not host level
@@ -240,9 +240,10 @@ Only the DB is copied. For stage to match prod's media and documents:
   command we use is the one Shopware's Docker docs give verbatim.
 - **Workers must consume `async` AND `low_priority`** — separate Doctrine queues;
   dropping `low_priority` silently strands those messages.
-- **ops-shell** (prod only) is bash + shopware-cli + rclone with **no app code**
-  — it can't run `bin/console`. Its `command` is a `sleep infinity` placeholder;
-  check the `shopware-ops-shell` repo for its real backup/entrypoint contract.
+- **Nothing backs anything up.** There is no backup container by design — run
+  `mariadb-dump` and an `rsync`/`rclone` of `<stack>/data/{files,media}` from the
+  host, on a timer of your choosing. `files` and `media` are the unrecoverable
+  ones; theme, thumbnail and sitemap regenerate.
 - **Recovery record** is this directory + git. Lost host → re-run cloud-init +
   `bootstrap.sh`. The one piece of provider state is the Cloud Firewall — keep
   it as `hcloud` commands here and it stays reproducible, no `tofu import`.

@@ -27,7 +27,6 @@ prep_dirs() {
   # Everything the app writes. Keep in sync with x-app-volumes in compose.yaml.
   local app_dirs=(media thumbnail theme sitemap files log)
   mkdir -p "${app_dirs[@]/#/$dir/data/}" "$dir/data/mysql"
-  [[ "$dir" == prod ]] && mkdir -p "$dir/data/rclone"
   $SUDO chown -R 82:82 "${app_dirs[@]/#/$dir/data/}"
 }
 
