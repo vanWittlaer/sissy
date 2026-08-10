@@ -22,6 +22,14 @@ require_env() {
   for f in .env .env.local; do
     [[ -f "$dir/$f" ]] || { echo "ERROR: $dir/$f missing (copy from $f.example)" >&2; exit 1; }
   done
+  # Bind-mounted single files must exist first: Docker would create a DIRECTORY
+  # in their place, and MariaDB's !includedir skips non-files without a word,
+  # so the tuning silently never applies.
+  [[ -f "$dir/mariadb.cnf" ]] || {
+    echo "ERROR: $dir/mariadb.cnf missing or not a regular file" >&2
+    echo "       (if Docker already created a directory there, rmdir it first)" >&2
+    exit 1
+  }
   for key in "${REQUIRED_ENV[@]}"; do
     grep -qE "^${key}=.+" "$dir/.env" || { echo "WARNING: $dir/.env has no $key" >&2; missing=1; }
   done

@@ -46,6 +46,8 @@ services:
 
   web:
     <<: *app
+    environment:
+      LOG_FILE: web
     volumes: *app-volumes
     networks:
       - internal
@@ -75,6 +77,8 @@ services:
     # a command as positional args and refuses to start. Must consume ALL three
     # transports -- dropping one silently strands those messages.
     entrypoint: ["php", "bin/console", "messenger:consume", "webhook", "async", "low_priority", "--time-limit=300", "--memory-limit=512M"]
+    environment:
+      LOG_FILE: worker
     volumes: *app-volumes
     deploy:
       replicas: 2
@@ -83,6 +87,8 @@ services:
     <<: *app
     # Blocking loop; same entrypoint reason as worker.
     entrypoint: ["php", "bin/console", "scheduled-task:run"]
+    environment:
+      LOG_FILE: scheduler
     volumes:
       - ./data/log:/var/www/html/var/log
 

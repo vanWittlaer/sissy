@@ -34,6 +34,8 @@ services:
 
   web:
     <<: *app
+    environment:
+      LOG_FILE: web
     volumes: *app-volumes
     networks:
       - internal
@@ -63,11 +65,15 @@ services:
     <<: *app
     # Single worker on stage — it shares the box with prod.
     entrypoint: ["php", "bin/console", "messenger:consume", "webhook", "async", "low_priority", "--time-limit=300", "--memory-limit=512M"]
+    environment:
+      LOG_FILE: worker
     volumes: *app-volumes
 
   scheduler:
     <<: *app
     entrypoint: ["php", "bin/console", "scheduled-task:run"]
+    environment:
+      LOG_FILE: scheduler
     volumes:
       - ./data/log:/var/www/html/var/log
 
