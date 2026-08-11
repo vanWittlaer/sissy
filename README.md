@@ -229,6 +229,73 @@ Only the DB is copied. For stage to match prod's media and documents:
 `rsync -a prod/data/media/ stage/data/media/` and likewise `data/files/`.
 `theme`, `thumbnail` and `sitemap` regenerate themselves.
 
+## Backups
+
+```bash
+./backup.sh prod                              # -> backups/prod/<UTC timestamp>/
+BACKUP_ROOT=/mnt/backup/sissy ./backup.sh prod # point at your actual mounted volume
+./restore.sh stage 20260811-030000            # DESTRUCTIVE: overwrites stage's DB + media + files
+FORCE=1 ./restore.sh prod 20260811-030000     # same guard as import-db.sh
+```
+
+Each run writes one timestamped directory containing:
+
+| File | Contents |
+|------|----------|
+| `database.sql.gz` | Full DB dump, nothing filtered out — `messenger_messages` (real queued jobs) survives, unlike `import-db.sh`'s dev-refresh flow. |
+| `media.tar.gz` | `<stack>/data/media` |
+| `files.tar.gz` | `<stack>/data/files` |
+
+The dump is **`mariadb-dump --single-transaction`**, run inside the stack's own
+`database` container (same shape as `refresh-stage.sh`), not `shopware-cli project dump`.
+The difference matters and it is the whole reason this script isn't the obvious one:
+
+- `--single-transaction` reads everything from **one InnoDB snapshot**, so the dump is
+  consistent *across* tables. `shopware-cli project dump` opens no transaction at all —
+  it wraps each table's `SELECT COUNT(*)` in `FLUSH TABLES <t> WITH READ LOCK`, unlocks,
+  and only then reads the data, so its output is a smear of 250-odd different instants.
+- It needs **no `RELOAD` privilege**, so the dump runs as the app user and this script
+  never touches `DB_ROOT_PASSWORD`. (`shopware-cli`'s per-table flush is exactly what
+  requires `RELOAD`, i.e. root.)
+- It takes **no locks**, so nothing stalls on a live shop.
+- No extra image to pull: `mariadb-dump` already ships in the `mariadb` image.
+
+The one thing that *does* break the snapshot is concurrent DDL — so don't run a deploy
+and a backup at the same time. `--hex-blob` keeps Shopware's `binary(16)` ids out of
+charset conversion; `--routines --events --triggers` catch schema objects a plugin may
+have left that the default flags skip.
+
+Not covered, on purpose: `thumbnail`/`theme`/`sitemap` regenerate themselves (see the
+table above), and secrets (`.env`, `.env.local`, `mariadb.cnf`) are gitignored/host-only
+and out of scope for this rotation — back those up separately (a password manager or
+secrets vault, not a data-backup cron job).
+
+`BACKUP_ROOT` (default `./backups`, i.e. a sibling of `prod/`/`stage/`/`edge/`, gitignored)
+should point at wherever you actually mount your backup disk/volume — the default is
+fine for trying the scripts out but is not where you want your only copy of production
+data. `BACKUP_KEEP` (default `7`) is how many timestamped backups per stack `backup.sh`
+keeps before deleting the oldest.
+
+Wire it up with cron **as root** on the host. Not a precaution: Shopware writes
+`files/theme-config/` at mode 0700 with 0600 contents (private-filesystem visibility,
+recreated on every theme compile), so nothing but UID 82 or root can read it and `tar`
+aborts. The script falls back to `sudo` when run as a user, which cron can't answer.
+
+```
+# /etc/cron.d/sissy-backup
+0 3 * * * root BACKUP_ROOT=/mnt/backup/sissy /opt/sissy/backup.sh prod >> /var/log/sissy-backup.log 2>&1
+```
+
+A run that fails part-way deletes its own timestamped directory, so a half-written
+backup never survives to be rotated as real or picked up by `restore.sh`. The dump is
+checked with `gzip -t` before the run counts as a success — the dump is streamed through
+a pipe, so a killed container otherwise leaves a truncated but plausible-looking `.gz`.
+
+`restore.sh` verifies all three archives *before* it destroys anything, stops
+`web`/`worker`/`scheduler`, brings `database` up on its own and waits for it to go
+healthy (so it also works on a rebuilt host where the whole stack is down), restores
+the DB and both archives, `chown`s them back to `82:82`, then `up -d`.
+
 ## Operational notes
 
 - **`mariadb.cnf` must be mode 0644**, and both failure modes are silent: too
@@ -258,10 +325,8 @@ Only the DB is copied. For stage to match prod's media and documents:
   leaves the container crash-looping while `docker ps` still says "Up".
 - **Workers must consume `async` AND `low_priority`** — separate Doctrine queues;
   dropping `low_priority` silently strands those messages.
-- **Nothing backs anything up.** There is no backup container by design — run
-  `mariadb-dump` and an `rsync`/`rclone` of `<stack>/data/{files,media}` from the
-  host, on a timer of your choosing. `files` and `media` are the unrecoverable
-  ones; theme, thumbnail and sitemap regenerate.
+- **Backups are `./backup.sh <stack>`**, see [Backups](#backups) below — there is
+  still no backup *container*, it's a plain script you put on a timer.
 - **Recovery record** is this directory + git. Lost host → re-run cloud-init +
   `bootstrap.sh`. The one piece of provider state is the Cloud Firewall — keep
   it as `hcloud` commands here and it stays reproducible, no `tofu import`.
