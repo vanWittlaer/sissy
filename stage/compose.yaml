@@ -1,7 +1,7 @@
 name: shop-stage
 
 x-app: &app
-  image: ghcr.io/vanwittlaer/sissy:${TAG:-latest}
+  image: ${APP_IMAGE:?set APP_IMAGE in .env}:${TAG:-latest}
   env_file: .env.local
   depends_on:
     database:

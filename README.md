@@ -11,7 +11,9 @@ prod/      web + worker×2 + scheduler + mariadb
 stage/     web + worker + scheduler + mariadb   (basic-auth gated)
 ```
 
-Uses the same container image you already build (`ghcr.io/vanwittlaer/sissy:<tag>`).
+Uses the same container image you already build (`$APP_IMAGE:<tag>`, set per stack in
+`.env`). That variable is the only thing here naming *your shop* rather than sissy —
+point it at your own registry and the rest of this directory is reusable as-is.
 
 ## Persistent data (`<stack>/data/`)
 

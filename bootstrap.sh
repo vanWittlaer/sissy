@@ -15,7 +15,7 @@ read -r -a STACKS <<<"${STACKS[*]}"
 # drifts. A missing key here doesn't fail the boot, it just makes the app behave
 # subtly wrong (http:// asset URLs, wrong canonical host), so warn loudly.
 REQUIRED_LOCAL=(APP_ENV APP_URL APP_SECRET INSTANCE_ID DATABASE_URL LOCK_DSN SYMFONY_TRUSTED_PROXIES)
-REQUIRED_ENV=(TAG DOMAIN DB_PASSWORD DB_ROOT_PASSWORD)
+REQUIRED_ENV=(APP_IMAGE TAG DOMAIN DB_PASSWORD DB_ROOT_PASSWORD)
 
 require_env() {
   local dir=$1 key missing=0
@@ -83,6 +83,13 @@ docker compose -f edge/compose.yaml up -d
 for stack in "${STACKS[@]}"; do
   echo "==> Bootstrapping stack: $stack"
   require_env "$stack"
+  # One image name for every environment: they differ by TAG. Drift here means
+  # promoting a stage build to prod silently ships a different repository.
+  img=$(grep -E '^APP_IMAGE=' "$stack/.env" | cut -d= -f2-)
+  if [[ -n "${first_img:-}" && "$img" != "$first_img" ]]; then
+    echo "WARNING: $stack/.env APP_IMAGE ($img) differs from $first_stack/.env ($first_img)" >&2
+  fi
+  : "${first_img:=$img}" "${first_stack:=$stack}"
   prep_dirs "$stack"
   local_file="$stack/compose.yaml"
   docker compose -f "$local_file" pull
