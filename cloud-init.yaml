@@ -1,7 +1,7 @@
 #cloud-config
 # Server prep for the sissy host. Targets Ubuntu 24.04 LTS only.
-# Docker, a 'deploy' user, fail2ban, key-only SSH. After boot: copy sissy/ to
-# /opt/sissy, fill in secrets, run ./bootstrap.sh.
+# Docker, a 'deploy' user, fail2ban, key-only SSH, and sissy itself cloned to
+# /opt/sissy at a pinned tag. After boot: fill in secrets, run ./bootstrap.sh.
 # Manual by design: DNS, secrets, and the network firewall (see README).
 
 package_update: true
@@ -79,13 +79,17 @@ runcmd:
     https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo $VERSION_CODENAME) stable"
     > /etc/apt/sources.list.d/docker.list
   - apt-get update
-  - apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin fail2ban apache2-utils
+  - apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin fail2ban apache2-utils git
   - systemctl enable --now docker
 
   # --- shared network + project dir ---
   - docker network create edge || true
   - mkdir -p /opt/sissy
   - chown -R deploy:deploy /opt/sissy
+  # Pinned, so a fresh box comes up on a known sissy version rather than
+  # whatever main happens to be. Bump the tag here to move the baseline.
+  # Non-fatal: a private fork needs a deploy key, so leave the dir usable.
+  - sudo -u deploy git clone --branch v1 https://github.com/vanWittlaer/sissy.git /opt/sissy || echo "WARNING - clone failed; populate /opt/sissy by hand"
 
   # No host firewall on purpose: ufw/iptables INPUT does not see Docker traffic
   # (dockerd DNATs in nat/PREROUTING and forwards past INPUT), so it would imply

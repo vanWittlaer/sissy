@@ -11,9 +11,48 @@ prod/      web + worker×2 + scheduler + mariadb
 stage/     web + worker + scheduler + mariadb   (basic-auth gated)
 ```
 
-Uses the same container image you already build (`$APP_IMAGE:<tag>`, set per stack in
-`.env`). That variable is the only thing here naming *your shop* rather than sissy —
-point it at your own registry and the rest of this directory is reusable as-is.
+Uses the container image your project already builds (`$APP_IMAGE:<tag>`, set per
+stack in `.env`). That variable is the only thing here that names *your shop*
+rather than sissy — everything else is the platform and is reused as-is.
+
+## Using sissy in a project
+
+Two halves, both pinned to the **same tag** so the workflow and the script it
+calls are always a matched pair.
+
+**On the host** — clone this repo to `/opt/sissy` (see [First-time
+setup](#first-time-setup)).
+
+**In your project's CI** — call the reusable workflows; nothing is copied:
+
+```yaml
+# .github/workflows/ci-cd.yml in YOUR project
+jobs:
+  build:
+    permissions: { contents: read, packages: write }
+    uses: vanWittlaer/sissy/.github/workflows/build-docker.yml@v1
+    with:
+      environment: ${{ github.ref == 'refs/heads/main' && 'prod' || 'stage' }}
+    secrets: inherit
+  deploy:
+    needs: build
+    uses: vanWittlaer/sissy/.github/workflows/deploy-ssh.yml@v1
+    with:
+      environment: ${{ github.ref == 'refs/heads/main' && 'prod' || 'stage' }}
+      stack: ${{ github.ref == 'refs/heads/main' && 'prod' || 'stage' }}
+      tag: ${{ needs.build.outputs.tag }}
+    secrets: inherit
+```
+
+The workflows resolve their context against the **caller**, so `actions/checkout`
+fetches your source and the image name derives from your repository. Defaults
+assume the app sits at `./shopware` with its Dockerfile at
+`./shopware/docker/Dockerfile`, and that `deploy.sh` is at `/opt/sissy` — pass
+`context`, `dockerfile` or `deploy_path` if yours differ.
+
+Your project also needs its own `Dockerfile` (copy `docker/Dockerfile` from a
+sissy-based project; it's ~20 lines and you'll want to customise it) and the
+repo variables/secrets listed under [First-time setup](#first-time-setup).
 
 ## Persistent data (`<stack>/data/`)
 
@@ -177,7 +216,15 @@ passwords and `APP_SECRET`). `bootstrap.sh` aborts if either is missing.
    you see the `WARNING` instead, fix access before rebooting. From then on
    it's `ssh deploy@host`, and the provider's web console is the way back if
    you lose the key.
-2. **Copy this folder** to `/opt/sissy` on the host.
+2. **Clone this repo** to `/opt/sissy` on the host, pinned to a release tag:
+   ```bash
+   git clone --branch v1 https://github.com/vanWittlaer/sissy.git /opt/sissy
+   ```
+   `.env`, `.env.local` and `data/` are gitignored, so they live in the working
+   tree as untracked files and survive every checkout. That is what makes
+   `git -C /opt/sissy describe --tags` (which version is this host on?),
+   `checkout v1.1` (upgrade), `checkout v1.0.0` (roll back) and `status` (what
+   did someone hand-edit at 3am?) work.
 3. **Fill in secrets:** for `edge`, `prod`, `stage`, copy the `*.example`
    files and edit. For stage's `BASIC_AUTH`: `htpasswd -nb user pass`, then
    **double every `$` to `$$`**.
@@ -201,8 +248,10 @@ are the only irreducibly manual bits.
 ./deploy.sh stage latest
 ```
 
-Wire your CI to `ssh deploy@host '/opt/sissy/deploy.sh prod <sha>'` after
-it pushes the image. The theme is compiled *inside the live web container*
+CI does this for you via `deploy-ssh.yml` (see [Using sissy in a
+project](#using-sissy-in-a-project)), which is just
+`ssh deploy@host '/opt/sissy/deploy.sh prod <sha>'` after the image is pushed.
+The theme is compiled *inside the live web container*
 because there's no S3 to hold it; migrations apply just after new code goes
 live (a brief new-code-vs-old-schema window — the price of single-node simple).
 

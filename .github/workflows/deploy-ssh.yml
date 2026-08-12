@@ -1,0 +1,62 @@
+name: Deploy over SSH
+
+# Replaces the Coolify webhook: this project deploys by running deploy.sh on
+# the host, which pulls the tag, recreates the services and runs the Shopware
+# deployment helper (install-or-migrate + theme compile).
+
+on:
+  workflow_call:
+    inputs:
+      environment:
+        required: true
+        type: string
+      stack:
+        description: Stack directory on the host — prod or stage.
+        required: true
+        type: string
+      tag:
+        description: Image tag to deploy (the commit SHA from the build job).
+        required: true
+        type: string
+      deploy_path:
+        description: Directory holding deploy.sh on the host.
+        type: string
+        default: /opt/sissy
+    secrets:
+      SSH_PRIVATE_KEY:
+        required: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    permissions:
+      contents: read
+    steps:
+      - name: Deploy ${{ inputs.stack }} @ ${{ inputs.tag }}
+        env:
+          SSH_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          # Repo/environment variables, not secrets.
+          HOST: ${{ vars.DEPLOY_HOST }}
+          KNOWN_HOSTS: ${{ vars.SSH_KNOWN_HOSTS }}
+          # Via env, not inline in the run: string — keeps caller-supplied
+          # values out of the shell the runner parses.
+          DEPLOY_PATH: ${{ inputs.deploy_path }}
+          STACK: ${{ inputs.stack }}
+          TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/id_deploy
+          chmod 600 ~/.ssh/id_deploy
+          if [ -n "${KNOWN_HOSTS:-}" ]; then
+            printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+            STRICT=yes
+          else
+            # Pin the key instead: set SSH_KNOWN_HOSTS to `ssh-keyscan <host>`.
+            echo "::warning::SSH_KNOWN_HOSTS not set — trusting the host key on first use"
+            STRICT=accept-new
+          fi
+          ssh -i ~/.ssh/id_deploy -o BatchMode=yes -o ConnectTimeout=15 \
+              -o StrictHostKeyChecking="$STRICT" "deploy@$HOST" \
+              "$DEPLOY_PATH/deploy.sh '$STACK' '$TAG'"
