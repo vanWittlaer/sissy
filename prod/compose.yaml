@@ -74,9 +74,16 @@ services:
   worker:
     <<: *app
     # entrypoint, not command: the image entrypoint is supervisord, which takes
-    # a command as positional args and refuses to start. Must consume ALL three
+    # a command as positional args and refuses to start. Must consume BOTH
     # transports -- dropping one silently strands those messages.
-    entrypoint: ["php", "bin/console", "messenger:consume", "webhook", "async", "low_priority", "--time-limit=300", "--memory-limit=512M"]
+    #
+    # No `webhook` here: that transport only exists on Shopware 6.8+ (or 6.7
+    # with WEBHOOKS_REWORK). messenger:consume validates receiver names before
+    # consuming, so naming it on 6.7 throws "The receiver "webhook" does not
+    # exist." and the worker drains NOTHING -- async included -- while
+    # restart: unless-stopped turns that into a silent crash-loop.
+    # On the 6.8 upgrade, add it back and put it FIRST.
+    entrypoint: ["php", "bin/console", "messenger:consume", "async", "low_priority", "--time-limit=300", "--memory-limit=512M"]
     environment:
       LOG_FILE: worker
     volumes: *app-volumes

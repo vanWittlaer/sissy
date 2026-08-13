@@ -29,7 +29,8 @@ The defining architectural choice: **MariaDB is the message queue and the lock s
 
 Consequences that constrain any change you make here:
 - **`web` must stay at 1 replica.** Filesystem cache + native PHP sessions are per-container. Workers scale freely. A second web node requires introducing Redis first.
-- **Workers must consume both `async` and `low_priority`** — separate Doctrine queues; dropping `low_priority` silently strands those messages.
+- **Workers must consume `async` and `low_priority`** — separate Doctrine queues; dropping one silently strands those messages.
+- **The `webhook` transport is Shopware 6.8+ (or 6.7 with `WEBHOOKS_REWORK` on) — do not list it otherwise.** It has a hardcoded `shopware-webhook://default` DSN (no `MESSENGER_*` env var), and it is simply *not registered* on stock 6.7. `messenger:consume` validates every receiver name up front and throws `RuntimeException: The receiver "webhook" does not exist.` — so an unsupported `webhook` argument doesn't degrade to "webhooks don't get delivered", it stops the worker before it consumes **anything**, `async` included. Combined with `restart: unless-stopped` that is a silent crash-loop. When the shop does reach 6.8, `webhook` must be added back and go **first**, so its retries don't queue behind an `async` backlog (it has built-in fairness and can't starve `async` in return).
 - **Theme compilation happens inside the live `web` container** (via `shopware-deployment-helper`), because there is no S3 to hold the compiled theme. This is why deploys are not zero-downtime.
 - `scheduler` runs `scheduled-task:run` as a blocking long-running process — no `--no-wait`.
 
@@ -44,7 +45,11 @@ Neither file is mounted — both are read host-side by the Compose CLI. Since `e
 
 Change a DB password and you must edit it in both files, in every DSN.
 
-Stage's `BASIC_AUTH` htpasswd hash goes through compose interpolation, so **every `$` must be doubled to `$$`** (`htpasswd -nb user pass`, then double). Forgetting this silently breaks auth.
+Adding a variable that the app or compose genuinely needs means touching three places, not one: the `*.example` file (which `lint.yml` uses as its `docker compose config` fixture) and `bootstrap.sh`'s `REQUIRED_ENV` / `REQUIRED_LOCAL` lists, which warn per stack when a hand-written host file has drifted.
+
+Stage's `BASIC_AUTH` htpasswd hash goes through compose interpolation, so **every `$` must be doubled to `$$`** (`htpasswd -nb user pass`, then double). Forgetting this silently breaks auth. A second higher-priority router exempts `PathPrefix(/api)` from that middleware: the admin sends `Authorization: Bearer`, which replaces the Basic credentials, so basicauth 401s and the browser re-prompts forever. Shopware's OAuth guards `/api` on its own — don't "fix" the hole by adding the middleware back.
+
+Stage also runs `APP_ENV=stage` (Shopware's staging mode), which is why `.env.local` pins `APP_DEBUG=0` — anything but `prod` turns debug on by default in `public/index.php`.
 
 The root `.gitignore` blocks `**/.env`, `**/.env.local`, `**/data/` and `backups/` — only the `*.example` files are ever committed. On a host this is load-bearing, not hygiene: it is why `/opt/sissy` can be a git clone whose secrets and data survive checking out a different tag.
 
@@ -58,9 +63,23 @@ The root `.gitignore` blocks `**/.env`, `**/.env.local`, `**/data/` and `backups
 ./refresh-stage.sh               # prod DB -> stage DB (routed via host), then deployment helper
 ./backup.sh prod                 # db + media + files -> backups/prod/<UTC timestamp>/, rotated
 ./restore.sh stage 20260811-030000   # DESTRUCTIVE; FORCE=1 required for prod
+./import-db.sh stage /tmp/dump.sql.gz # DESTRUCTIVE; import a dev dump (e.g. `ddev export-db`)
 ```
 
 All `cd` to their own directory first, so they work from anywhere.
+
+`deploy.sh` passes `TAG` only for its own two compose calls — it does **not** write it to
+`$STACK/.env`. So a later bare `docker compose -f prod/compose.yaml up -d` on the host
+falls back to `.env`'s `TAG` (usually `latest`) and silently rolls the stack off the
+deployed SHA. Prefix `TAG=<sha>` on ad-hoc compose commands, or persist it in `.env`.
+
+`import-db.sh` is the dev→server counterpart to `refresh-stage.sh`: drop/recreate the DB,
+pipe the dump in, run the deployment helper to migrate the dev schema up to the image's
+Shopware version, then rewrite every `sales_channel_domain.url` containing the source host
+(default `ddev.site`) to the stack's own `DOMAIN` — without that the storefront keeps
+redirecting to the machine the dump came from. It also truncates `messenger_messages` so
+dev leftovers aren't replayed by this stack's workers, and it refuses `prod` without
+`FORCE=1`. Media is not in a dump; `rsync` it separately.
 
 `backup.sh` dumps the database with `mariadb-dump --single-transaction` inside the
 stack's own `database` container, plus `tar`s `data/media` and `data/files`;
@@ -115,6 +134,12 @@ Also note `users:` starts with `- default`: declaring the list at all replaces t
 Never mount `public/bundles` (baked at build by `assets:install`; a bind mount hides the image's copy, as bind mounts don't seed from the image) or share `var/cache` (per-container by design).
 
 All of these must be **owned by UID 82** or the app fails with Permission denied. `bootstrap.sh:prep_dirs` creates and chowns them before Docker can make them root-owned — its `app_dirs` list must stay in sync with `x-app-volumes`.
+
+**`data/mysql` is the exception and must NOT be chowned to 82.** It belongs to the mariadb image's own user (UID 999); chowning it lets MariaDB start but not create tables (`errno: 13`), leaving a half-written data dictionary behind. `prep_dirs` deliberately creates it outside the chown list.
+
+`mariadb.cnf` is bind-mounted as a **single file** at `/etc/mysql/conf.d/99-sissy.cnf`, which brings two silent failure modes `bootstrap.sh:require_env` guards against: if the file is missing Docker creates a *directory* in its place and MariaDB's `!includedir` skips it wordlessly, and MariaDB also ignores a config file it cannot read or that is group/world-writable. Mode **0644** is the only one that works.
+
+Each service sets `LOG_FILE` (`web`/`worker`/`scheduler`) so the shared `data/log` mount gets one file per service alongside stderr — otherwise all three interleave into one stream.
 
 ### Image
 

@@ -3,3 +3,9 @@
 **/.env.local
 **/data/
 backups/
+
+# Editor / IDE
+.idea/
+.vscode/
+*.swp
+.DS_Store
