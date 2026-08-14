@@ -15,6 +15,10 @@ Uses the container image your project already builds (`$APP_IMAGE:<tag>`, set pe
 stack in `.env`). That variable is the only thing here that names *your shop*
 rather than sissy — everything else is the platform and is reused as-is.
 
+> **Setting this up for the first time, or moving an existing shop here?**
+> Follow [`ONBOARDING.md`](ONBOARDING.md) — the steps in order, both journeys.
+> This file is the reference you come back to afterwards.
+
 ## Using sissy in a project
 
 Two halves, both pinned to the **same tag** so the workflow and the script it
@@ -50,9 +54,19 @@ assume the app sits at `./shopware` with its Dockerfile at
 `./shopware/docker/Dockerfile`, and that `deploy.sh` is at `/opt/sissy` — pass
 `context`, `dockerfile` or `deploy_path` if yours differ.
 
-Your project also needs its own `Dockerfile` (copy `docker/Dockerfile` from a
-sissy-based project; it's ~20 lines and you'll want to customise it) and the
-repo variables/secrets listed under [First-time setup](#first-time-setup).
+Your project also needs a `Dockerfile`, which you do not write by hand — sissy
+is built on [`shopware/docker`](https://github.com/shopware/docker), so
+`composer require shopware/docker` installs one via its Flex recipe along with
+baseline `config/packages` configuration. Require `shopware/deployment-helper`
+directly too: it arrives transitively, but the `setup` container's entrypoint
+*is* the helper, so an unrelated upgrade dropping it would take your deploys
+with it.
+
+CI also needs the secret `SSH_PRIVATE_KEY` and the variables `DEPLOY_HOST` and
+`SSH_KNOWN_HOSTS`, plus `BEARER_PACKAGES_SHOPWARE` if you build commercial
+plugins — set on GitHub **environments** named for each stack. See
+[ONBOARDING § Get the image building](ONBOARDING.md#2-get-the-image-building)
+for the full table and why cloud-init does not cover the deploy key.
 
 ## Persistent data (`<stack>/data/`)
 
@@ -204,6 +218,10 @@ the host, then `chown deploy:deploy` and `chmod 600` (they hold your DB
 passwords and `APP_SECRET`). `bootstrap.sh` aborts if either is missing.
 
 ## First-time setup
+
+The summary; [`ONBOARDING.md`](ONBOARDING.md) is the same ground step by step,
+plus what your project must provide, the CI secrets, and how to move an
+existing shop's data across.
 
 1. **Provision the host** with `cloud-init.yaml` (installs Docker + compose,
    creates the `deploy` user, `edge` network, fail2ban). Or run those steps by
