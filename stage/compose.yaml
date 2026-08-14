@@ -69,6 +69,10 @@ services:
     environment:
       LOG_FILE: worker
     volumes: *app-volumes
+    # Serves no HTTP, so the image's web healthcheck can only fail — see
+    # prod/compose.yaml for why it is disabled rather than replaced.
+    healthcheck:
+      disable: true
 
   scheduler:
     <<: *app
@@ -77,6 +81,8 @@ services:
       LOG_FILE: scheduler
     volumes:
       - ./data/log:/var/www/html/var/log
+    healthcheck:
+      disable: true
 
   database:
     image: mariadb:11.8

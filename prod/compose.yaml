@@ -73,9 +73,11 @@ services:
 
   worker:
     <<: *app
-    # entrypoint, not command: the image entrypoint is supervisord, which takes
-    # a command as positional args and refuses to start. Must consume BOTH
-    # transports -- dropping one silently strands those messages.
+    # entrypoint, not command: the image's own entrypoint (supervisord on the
+    # FPM docker-base tags, docker-php-entrypoint on -frankenphp) treats a
+    # command as positional args and refuses to start. An explicit entrypoint
+    # overrides either, which is why it is the form that works on any variant.
+    # Must consume BOTH transports -- dropping one strands those messages.
     #
     # No `webhook` here: that transport only exists on Shopware 6.8+ (or 6.7
     # with WEBHOOKS_REWORK). messenger:consume validates receiver names before
@@ -87,6 +89,17 @@ services:
     environment:
       LOG_FILE: worker
     volumes: *app-volumes
+    # The image's healthcheck probes the web server, and every service here is
+    # built from the SAME image -- so in a container that runs a consumer and
+    # serves no HTTP it can only ever fail. Left on, `unhealthy` becomes the
+    # steady state and stops meaning anything, which is precisely the signal
+    # you want when telling a wedged worker from a working one. Nothing gates
+    # on it (`depends_on` here waits on database health and setup's exit).
+    # Deliberately not replaced with a pgrep-style check: process liveness is
+    # already covered by `restart: unless-stopped`, and a consumer that is
+    # stuck rather than dead would still look fine.
+    healthcheck:
+      disable: true
     deploy:
       replicas: 2
 
@@ -98,6 +111,8 @@ services:
       LOG_FILE: scheduler
     volumes:
       - ./data/log:/var/www/html/var/log
+    healthcheck:      # serves no HTTP either -- see worker
+      disable: true
 
   database:
     image: mariadb:11.8
