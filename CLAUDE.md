@@ -143,7 +143,7 @@ Each service sets `LOG_FILE` (`web`/`worker`/`scheduler`) so the shared `data/lo
 
 ### Image
 
-The Dockerfile lives in the **consuming project**, not here — it is ~20 lines and projects customise it. `build-docker.yml` defaults to `./shopware/docker/Dockerfile` with context `./shopware`; pass the `dockerfile`/`context` inputs for another layout. The expected shape is a two-stage build: `ghcr.io/shopware/shopware-cli` runs `shopware-cli project ci /src`, and the result is copied `--chown=82` into `ghcr.io/shopware/docker-base:8.4`. The compose files here reference `${APP_IMAGE:?...}:${TAG:-latest}`.
+The Dockerfile lives in the **consuming project**, not here — it comes from `composer require shopware/docker` (a Flex recipe that keeps it updated), and projects customise it. `build-docker.yml` defaults to `./shopware/docker/Dockerfile` with context `./shopware`; pass the `dockerfile`/`context` inputs for another layout. The shape is a two-stage build: `ghcr.io/shopware/shopware-cli` runs `shopware-cli project ci /src`, and the result is copied `--chown=82` into `ghcr.io/shopware/docker-base`. **Which `docker-base` tag is the consuming project's choice, not sissy's** — the recipe now defaults to `-frankenphp` (single process), while a hand-pinned `:8.4` is the FPM-under-supervisord variant. sissy works with either: both serve on 8000. See `ONBOARDING.md` for the trade-off. The compose files here reference `${APP_IMAGE:?...}:${TAG:-latest}`.
 
 `APP_IMAGE` is the one identifier that names *the shop*, not the platform — everything else (`/opt/sissy`, `99-sissy.cnf`, the `io.sissy.*` labels) names sissy itself and is meant to be identical across projects. It lives in each stack's `.env`, and CI derives the same value from the **caller's** `github.repository`, so a new project needs no edit here at all. Compose's `:?` form is deliberate: an unset `APP_IMAGE` fails with that message instead of docker's `invalid reference format`. `bootstrap.sh` warns when prod's and stage's values differ, since that silently breaks promote-by-tag.
 
@@ -153,7 +153,7 @@ The Dockerfile lives in the **consuming project**, not here — it is ~20 lines 
 
 Carried over from `README.md` — treat as unfinished, not as settled design:
 
-- **`worker`/`scheduler` must use `entrypoint:`, never `command:`** — the image entrypoint is supervisord, which takes a command as positional args and aborts. With `restart: unless-stopped` that crash-loop reads as "Up" in `docker ps`; the queue simply stops draining.
+- **`worker`/`scheduler` must use `entrypoint:`, never `command:`** — on the FPM-based `docker-base` tags (`:8.4`, `-caddy`, `-nginx`) the image entrypoint is supervisord, which takes a command as positional args and aborts. With `restart: unless-stopped` that crash-loop reads as "Up" in `docker ps`; the queue simply stops draining. The `-frankenphp` tags entrypoint `docker-php-entrypoint` instead, so the failure differs — but `entrypoint:` overrides either, which is why it is the form that works regardless of variant.
 - CI deploy needs its own key: add the `SSH_PRIVATE_KEY` secret's public half to `/home/deploy/.ssh/authorized_keys` on the host, plus repo variables `DEPLOY_HOST` and `SSH_KNOWN_HOSTS`. cloud-init only imports the provider's console keys.
 
 ## CI/CD (`.github/workflows/`)
