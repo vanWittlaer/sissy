@@ -80,5 +80,16 @@ jobs:
           cache-to: type=gha,mode=max
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          # The Dockerfile from `composer require shopware/docker` reads the
+          # token as a BuildKit secret -- `--mount=type=secret,id=packages_token,
+          # env=SHOPWARE_PACKAGES_TOKEN` -- so a build-arg alone never reaches
+          # `shopware-cli project ci` and commercial plugins fail to install
+          # unauthenticated. The mount id, not the env name, is what must match.
+          secrets: |
+            packages_token=${{ secrets.BEARER_PACKAGES_SHOPWARE }}
+          # Kept for projects whose hand-written Dockerfile declares
+          # `ARG SHOPWARE_PACKAGES_TOKEN`; removing it would break them mid-v1.
+          # Prefer the secret above: build-args are baked into image history,
+          # which is why the recipe stopped using one. Drop this in v2.
           build-args: |-
             SHOPWARE_PACKAGES_TOKEN=${{ secrets.BEARER_PACKAGES_SHOPWARE }}
