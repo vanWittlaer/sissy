@@ -30,8 +30,8 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     environment: ${{ inputs.environment }}
-    permissions:
-      contents: read
+    # Nothing here touches the repo; the job needs no token scopes at all.
+    permissions: {}
     steps:
       - name: Deploy ${{ inputs.stack }} @ ${{ inputs.tag }}
         env:
@@ -46,6 +46,13 @@ jobs:
           TAG: ${{ inputs.tag }}
         run: |
           set -euo pipefail
+          # The remote side re-parses the whole command string, so quoting
+          # alone doesn't help there: a caller that wires `tag:` to attacker-
+          # influenced context (a branch name, a dispatch input) must not be
+          # able to smuggle shell into the prod host. Whitelist, then quote.
+          [[ "$STACK" =~ ^[A-Za-z0-9_-]+$ ]] || { echo "::error::invalid stack '$STACK'"; exit 1; }
+          [[ "$TAG" =~ ^[A-Za-z0-9_][A-Za-z0-9_.-]*$ ]] || { echo "::error::invalid tag '$TAG'"; exit 1; }
+          [[ "$DEPLOY_PATH" =~ ^[A-Za-z0-9._/-]+$ ]] || { echo "::error::invalid deploy_path '$DEPLOY_PATH'"; exit 1; }
           install -m 700 -d ~/.ssh
           printf '%s\n' "$SSH_KEY" > ~/.ssh/id_deploy
           chmod 600 ~/.ssh/id_deploy

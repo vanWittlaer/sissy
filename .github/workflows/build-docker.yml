@@ -16,6 +16,14 @@ on:
         description: Dockerfile path, relative to the repo root.
         type: string
         default: ./shopware/docker/Dockerfile
+      legacy_token_build_arg:
+        description: >-
+          Also pass the packages token as build-arg SHOPWARE_PACKAGES_TOKEN.
+          Only needed by hand-written Dockerfiles that declare that ARG — and
+          it bakes the token into the pushed image's history, so set this to
+          false as soon as the Dockerfile reads the BuildKit secret instead.
+        type: boolean
+        default: true
     secrets:
       BEARER_PACKAGES_SHOPWARE:
         required: false
@@ -87,9 +95,11 @@ jobs:
           # unauthenticated. The mount id, not the env name, is what must match.
           secrets: |
             packages_token=${{ secrets.BEARER_PACKAGES_SHOPWARE }}
-          # Kept for projects whose hand-written Dockerfile declares
-          # `ARG SHOPWARE_PACKAGES_TOKEN`; removing it would break them mid-v1.
-          # Prefer the secret above: build-args are baked into image history,
-          # which is why the recipe stopped using one. Drop this in v2.
+          # Kept (behind an input, default on) for projects whose hand-written
+          # Dockerfile declares `ARG SHOPWARE_PACKAGES_TOKEN`; dropping it
+          # outright would break them mid-v1. Prefer the secret above and pass
+          # legacy_token_build_arg: false — build-args are baked into image
+          # history, which is why the recipe stopped using one. Default to
+          # false (or drop entirely) in v2.
           build-args: |-
-            SHOPWARE_PACKAGES_TOKEN=${{ secrets.BEARER_PACKAGES_SHOPWARE }}
+            ${{ inputs.legacy_token_build_arg && format('SHOPWARE_PACKAGES_TOKEN={0}', secrets.BEARER_PACKAGES_SHOPWARE) || '' }}

@@ -22,12 +22,16 @@ services:
       # Traefik creates acme.json itself (chmod 600). Just give it the directory.
       - ./data/acme:/acme
     restart: unless-stopped
+    # Traefik is the internet-facing process AND holds the Docker socket (root
+    # on the host, in effect — :ro does not restrict the API). This doesn't fix
+    # that, but it removes the setuid escalation path from an in-container RCE.
+    security_opt:
+      - no-new-privileges:true
     networks:
       - edge
 
 networks:
   edge:
-    # Shared external network; prod & stage attach to it.
-    # Create once: docker network create edge
-    name: edge
+    # Shared external network; prod & stage attach to it. The key doubles as
+    # the network name. Create once: docker network create edge
     external: true

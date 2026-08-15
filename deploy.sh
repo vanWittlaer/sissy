@@ -27,8 +27,16 @@ else
   [[ -n "$TAG" ]] || { TAG=latest; TAG_SRC="default"; }
 fi
 
+# CI passes this through a remote ssh command line, and it lands in the sed
+# below — refuse anything that isn't a plain docker tag before using it.
+[[ "$TAG" =~ ^[A-Za-z0-9_][A-Za-z0-9_.-]*$ ]] || { echo "ERROR: '$TAG' is not a valid image tag" >&2; exit 1; }
+
 echo "==> Deploying $STACK @ $TAG (from $TAG_SRC)"
-TAG="$TAG" docker compose -f "$FILE" pull
+# Pull only the app image: web/worker/scheduler/setup share it, so one pull
+# fetches it for all — and a freshly published mariadb patch image doesn't get
+# to recreate the database container as a deploy side effect. (A missing DB
+# image on a fresh host is still pulled by `up -d` itself.)
+TAG="$TAG" docker compose -f "$FILE" pull web
 TAG="$TAG" docker compose -f "$FILE" up -d
 
 # Record what is actually running. TAG is only passed for the two calls above,

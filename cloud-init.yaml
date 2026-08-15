@@ -104,7 +104,7 @@ runcmd:
   - |
     set -eu
     SRC=/root/.ssh/authorized_keys
-    [ -s "$SRC" ] || SRC=$(ls -1 /home/*/.ssh/authorized_keys 2>/dev/null | grep -v '^/home/deploy/' | head -1 || true)
+    [ -s "$SRC" ] || SRC=$(ls -1 /home/*/.ssh/authorized_keys 2>/dev/null | grep -v '^/home/deploy/' | head -1)
     if [ -n "${SRC:-}" ] && [ -s "$SRC" ]; then
       install -d -m 700 -o deploy -g deploy /home/deploy/.ssh
       awk '{for(i=1;i<=NF;i++) if($i ~ /^(ssh-|ecdsa-|sk-)/) {k=$i; for(j=i+1;j<=NF;j++) k=k" "$j; print k; break}}' "$SRC" \

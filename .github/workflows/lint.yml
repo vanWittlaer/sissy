@@ -3,12 +3,12 @@ name: Lint
 # Guards the platform half. Once other projects pin @v1, a bad ${VAR:?} or a
 # broken script reaches THEIR hosts, not just ours.
 
+# push on main only: develop/feature branches are covered by their PRs, and
+# listing them too runs every check twice per PR commit.
 on:
   push:
     branches:
       - main
-      - develop
-      - 'feature/**'
   pull_request:
   workflow_dispatch:
 
@@ -16,17 +16,14 @@ permissions:
   contents: read
 
 jobs:
-  shellcheck:
+  # One job, one runner: both checks together take seconds, so separate jobs
+  # would just pay runner spin-up and checkout twice.
+  lint:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
       # Preinstalled on the runner image; no action dependency needed.
       - run: shellcheck ./*.sh
-
-  compose:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v5
       - name: Validate every stack against its own examples
         run: |
           set -euo pipefail

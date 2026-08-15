@@ -33,18 +33,18 @@ ROOT_PW=$(grep -E '^DB_ROOT_PASSWORD=' "$STACK/.env" | cut -d= -f2-)
 DOMAIN=$(grep -E '^DOMAIN=' "$STACK/.env" | cut -d= -f2-)
 [[ -n "$ROOT_PW" && -n "$DOMAIN" ]] || { echo "ERROR: DB_ROOT_PASSWORD/DOMAIN missing from $STACK/.env" >&2; exit 1; }
 
-db() { docker compose -f "$FILE" exec -T database mariadb -uroot -p"$ROOT_PW" "$@"; }
+# Password via MYSQL_PWD env, not -p: a -p argument is readable in the host's
+# `ps` output by any account for as long as the command runs.
+db() { docker compose -f "$FILE" exec -T -e MYSQL_PWD="$ROOT_PW" database mariadb -uroot "$@"; }
 
 echo "==> Recreating '$STACK' database (everything currently in it is lost)"
 db -e "DROP DATABASE IF EXISTS shopware; CREATE DATABASE shopware;"
 
 echo "==> Importing $DUMP"
-# -T matters: with a TTY allocated, the pipe delivers nothing and the import
-# silently does nothing at all.
-case "$DUMP" in
-  *.gz) gunzip -c "$DUMP" ;;
-  *)    cat "$DUMP" ;;
-esac | docker compose -f "$FILE" exec -T database mariadb -uroot -p"$ROOT_PW" shopware
+# db()'s -T matters: with a TTY allocated, the pipe delivers nothing and the
+# import silently does nothing at all. gzip -f detects by content (not file
+# name) and passes plain SQL through unchanged, so both dump kinds work.
+gzip -cdf "$DUMP" | db shopware
 
 echo "==> Migrating to the image's Shopware version + compiling theme"
 docker compose -f "$FILE" exec -T web /var/www/html/vendor/bin/shopware-deployment-helper run -n

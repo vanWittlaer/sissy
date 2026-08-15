@@ -19,6 +19,10 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
+# The backup IS the shop's data (full DB dump, invoice PDFs); the default
+# umask would leave it world-readable on whatever volume BACKUP_ROOT is.
+umask 077
+
 STACK=${1:?usage: backup.sh <stack>}
 FILE="$STACK/compose.yaml"
 [[ -f "$FILE" ]] || { echo "ERROR: unknown stack '$STACK'" >&2; exit 1; }
@@ -68,17 +72,22 @@ tar_live() {
 }
 
 echo "==> [$STACK] Dumping database"
+# pigz compresses on all cores, shortening the window the --single-transaction
+# snapshot stays open (during which a concurrent deploy's DDL would break it).
+COMPRESS=gzip; command -v pigz >/dev/null 2>&1 && COMPRESS=pigz
 # --hex-blob keeps Shopware's binary(16) ids out of charset conversion on the
 # way through the pipe; --routines/--events/--triggers catch anything a plugin
-# left in the schema that the default flags would skip.
-docker compose -f "$FILE" exec -T database \
+# left in the schema that the default flags would skip. The password goes in
+# as MYSQL_PWD env, not -p on the command line, where every host account
+# could read it out of `ps` for the duration of the dump.
+docker compose -f "$FILE" exec -T -e MYSQL_PWD="$DB_PW" database \
     mariadb-dump \
       --single-transaction \
       --hex-blob \
       --default-character-set=utf8mb4 \
       --routines --events --triggers \
-      -ushopware -p"$DB_PW" shopware \
-  | gzip -c > "$DEST/database.sql.gz"
+      -ushopware shopware \
+  | "$COMPRESS" -c > "$DEST/database.sql.gz"
 # pipefail already caught a failed dump; this also catches a half-written .gz,
 # which is otherwise indistinguishable from a real one until restore day.
 gzip -t "$DEST/database.sql.gz"
@@ -96,9 +105,9 @@ shopt -s nullglob
 existing=("$BACKUP_ROOT/$STACK"/*/)
 shopt -u nullglob
 if ((${#existing[@]} > BACKUP_KEEP)); then
-  # Sort by name, not mtime: the directory name IS the UTC timestamp, so it
-  # sorts chronologically and can't be reordered by anything touching the dir.
-  mapfile -t old < <(printf '%s\n' "${existing[@]}" | sort -r | tail -n +"$((BACKUP_KEEP + 1))")
+  # The glob is already sorted by name, and the directory name IS the UTC
+  # timestamp — oldest first — so "everything but the last KEEP" is a slice.
+  old=("${existing[@]:0:${#existing[@]}-BACKUP_KEEP}")
   echo "    removing ${#old[@]} old backup(s):"
   printf '      %s\n' "${old[@]}"
   $SUDO rm -rf "${old[@]}"

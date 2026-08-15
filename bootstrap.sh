@@ -8,20 +8,34 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
-STACKS=("${@:-prod stage}")
-read -r -a STACKS <<<"${STACKS[*]}"
+STACKS=("$@")
+((${#STACKS[@]})) || STACKS=(prod stage)
 
-# .env.local is gitignored, so it is hand-written on every host and silently
-# drifts. A missing key here doesn't fail the boot, it just makes the app behave
-# subtly wrong (http:// asset URLs, wrong canonical host), so warn loudly.
-REQUIRED_LOCAL=(APP_ENV APP_URL APP_SECRET INSTANCE_ID DATABASE_URL LOCK_DSN SYMFONY_TRUSTED_PROXIES)
-REQUIRED_ENV=(APP_IMAGE TAG DOMAIN DB_PASSWORD DB_ROOT_PASSWORD)
-
+# .env/.env.local are gitignored, so they are hand-written on every host and
+# silently drift. A missing key doesn't fail the boot, it just makes the app
+# behave subtly wrong (http:// asset URLs, wrong canonical host), so warn
+# loudly. The *.example files are the roster of required keys — the same
+# fixture lint.yml validates compose against — so adding a variable there is
+# enough to have every host checked for it.
 require_env() {
-  local dir=$1 key missing=0
+  local dir=$1 f key missing=0
   for f in .env .env.local; do
     [[ -f "$dir/$f" ]] || { echo "ERROR: $dir/$f missing (copy from $f.example)" >&2; exit 1; }
+    # These hold DB passwords and APP_SECRET; the default umask leaves them
+    # world-readable to any local account.
+    $SUDO chmod 600 "$dir/$f"
+    while IFS= read -r key; do
+      grep -qE "^${key}=.+" "$dir/$f" || { echo "WARNING: $dir/$f has no $key" >&2; missing=1; }
+    done < <(grep -oE '^[A-Z][A-Z0-9_]*' "$dir/$f.example" 2>/dev/null || true)
   done
+  # The #1 documented gotcha: the DB password lives in .env (DB_PASSWORD) and
+  # again, spelled out, inside .env.local's DSNs. Catch a change made in only
+  # one of the two places before it turns into a refused connection.
+  local db_pw
+  db_pw=$(grep -E '^DB_PASSWORD=' "$dir/.env" | cut -d= -f2- || true)
+  if [[ -n "$db_pw" ]] && ! grep -E '^DATABASE_URL=' "$dir/.env.local" | grep -qF ":${db_pw}@"; then
+    echo "WARNING: $dir/.env.local DATABASE_URL does not carry .env's DB_PASSWORD" >&2; missing=1
+  fi
   # Bind-mounted single files must exist first: Docker would create a DIRECTORY
   # in their place, and MariaDB's !includedir skips non-files without a word,
   # so the tuning silently never applies.
@@ -33,13 +47,7 @@ require_env() {
   # MariaDB runs as uid 999 and skips a file it cannot read — and refuses one
   # that is group/world writable. Both silently. 0644 is the only mode that works.
   $SUDO chmod 644 "$dir/mariadb.cnf"
-  for key in "${REQUIRED_ENV[@]}"; do
-    grep -qE "^${key}=.+" "$dir/.env" || { echo "WARNING: $dir/.env has no $key" >&2; missing=1; }
-  done
-  for key in "${REQUIRED_LOCAL[@]}"; do
-    grep -qE "^${key}=.+" "$dir/.env.local" || { echo "WARNING: $dir/.env.local has no $key" >&2; missing=1; }
-  done
-  [[ $missing -eq 0 ]] || echo "  ^ compare against $dir/.env.local.example before continuing" >&2
+  [[ $missing -eq 0 ]] || echo "  ^ compare against $dir/*.example before continuing" >&2
 }
 
 # Pre-create bind-mount dirs with correct ownership. If Docker creates them it
@@ -58,21 +66,6 @@ prep_dirs() {
   $SUDO chown -R 82:82 "${app_dirs[@]/#/$dir/data/}"
 }
 
-wait_healthy() {
-  local file=$1 svc=$2 tries=60 cid status
-  echo "  waiting for '$svc' to be healthy..."
-  while ((tries--)); do
-    cid=$(docker compose -f "$file" ps -q "$svc" 2>/dev/null || true)
-    if [[ -n "$cid" ]]; then
-      status=$(docker inspect -f '{{.State.Health.Status}}' "$cid" 2>/dev/null || echo starting)
-      [[ "$status" == "healthy" ]] && { echo "  '$svc' healthy"; return 0; }
-    fi
-    sleep 2
-  done
-  echo "ERROR: '$svc' did not become healthy in time" >&2
-  return 1
-}
-
 echo "==> Ensuring shared 'edge' network exists"
 docker network inspect edge >/dev/null 2>&1 || docker network create edge
 
@@ -86,17 +79,19 @@ for stack in "${STACKS[@]}"; do
   # One image name for every environment: they differ by TAG. Drift here means
   # promoting a stage build to prod silently ships a different repository.
   img=$(grep -E '^APP_IMAGE=' "$stack/.env" | cut -d= -f2-)
-  if [[ -n "${first_img:-}" && "$img" != "$first_img" ]]; then
+  if [[ -z "${first_img:-}" ]]; then
+    first_img=$img first_stack=$stack
+  elif [[ "$img" != "$first_img" ]]; then
     echo "WARNING: $stack/.env APP_IMAGE ($img) differs from $first_stack/.env ($first_img)" >&2
   fi
-  : "${first_img:=$img}" "${first_stack:=$stack}"
   prep_dirs "$stack"
   local_file="$stack/compose.yaml"
   docker compose -f "$local_file" pull
   # `up -d` blocks on the setup container, which installs on an empty DB and
-  # migrates on an existing one before web/worker/scheduler are allowed to start.
+  # migrates on an existing one before web/worker/scheduler are allowed to
+  # start — and setup itself gates on the database being healthy, so when this
+  # returns, the whole stack is up. No extra health polling needed.
   docker compose -f "$local_file" up -d
-  wait_healthy "$local_file" database
 done
 
 echo "==> Done. Point DNS at this host if you haven't; Traefik will issue certs on first hit."

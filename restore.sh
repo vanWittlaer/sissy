@@ -45,23 +45,21 @@ echo "==> [$STACK] Stopping web/worker/scheduler"
 docker compose -f "$FILE" stop web worker scheduler
 
 # On a rebuilt host the stack may be entirely down, and `exec` on a stopped
-# container just fails -- bring the database up on its own and wait it out.
+# container just fails -- bring the database up on its own; --wait blocks
+# until its healthcheck passes (and fails the script if it never does).
 echo "==> [$STACK] Ensuring database is up"
-docker compose -f "$FILE" up -d database
-tries=60
-until [[ "$(docker inspect -f '{{.State.Health.Status}}' "$(docker compose -f "$FILE" ps -q database)" 2>/dev/null || echo starting)" == healthy ]]; do
-  ((tries--)) || { echo "ERROR: database did not become healthy in time" >&2; exit 1; }
-  sleep 2
-done
+docker compose -f "$FILE" up -d --wait database
 
+# Root password rides in as MYSQL_PWD env, not -p on the command line, where
+# it would sit in the host's `ps` output for the whole import.
 echo "==> [$STACK] Restoring database from $TIMESTAMP"
-docker compose -f "$FILE" exec -T database \
-    mariadb -uroot -p"$ROOT_PW" -e "DROP DATABASE IF EXISTS shopware; CREATE DATABASE shopware;"
+docker compose -f "$FILE" exec -T -e MYSQL_PWD="$ROOT_PW" database \
+    mariadb -uroot -e "DROP DATABASE IF EXISTS shopware; CREATE DATABASE shopware;"
 # messenger_messages is deliberately left intact -- this is a same-host
 # disaster-recovery restore of real data, not a dev-dump import, so queued
 # jobs (import-db.sh drops them; this does not) should survive.
 gunzip -c "$SRC/database.sql.gz" \
-  | docker compose -f "$FILE" exec -T database mariadb -uroot -p"$ROOT_PW" shopware
+  | docker compose -f "$FILE" exec -T -e MYSQL_PWD="$ROOT_PW" database mariadb -uroot shopware
 
 echo "==> [$STACK] Restoring media/ and files/"
 $SUDO rm -rf "$STACK/data/media" "$STACK/data/files"

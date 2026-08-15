@@ -104,7 +104,7 @@ Traefik terminates TLS and forwards **plain HTTP** to the container on `:8000`. 
 
 The fix is one variable in each stack's `.env.local`: **`SYMFONY_TRUSTED_PROXIES=0.0.0.0/0`**. Note the name — Symfony's FrameworkBundle defaults `trusted_proxies` to `%env(default::SYMFONY_TRUSTED_PROXIES)%`, so a plain `TRUSTED_PROXIES` is read by nothing and no config file is needed. `SYMFONY_TRUSTED_HEADERS` can stay unset; `Kernel.php` then trusts `FOR|PORT|PROTO`, which covers the scheme. It's an env var, so `up -d` suffices — no rebuild.
 
-`0.0.0.0/0` is safe only because no service publishes a port: Traefik is the sole route in, and it strips inbound `X-Forwarded-*` from untrusted clients. Publish an app port and this becomes a live spoofing vector.
+`0.0.0.0/0` is safe only because no service publishes a port: Traefik is the sole route in, and it strips inbound `X-Forwarded-*` from untrusted clients. Publish an app port and this becomes a live spoofing vector. Accepted residual risk: prod's and stage's `web` share the `edge` network, so a compromised stage container could reach prod's `web` on `:8000` directly, bypassing Traefik (and thus basic-auth and header stripping). Eliminating it means per-stack edge networks (`edge-prod`/`edge-stage`, Traefik on both) — do that before treating stage as untrusted.
 
 To check it's actually applied (`debug:config` fails on a frozen prod container):
 
