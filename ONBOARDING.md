@@ -79,10 +79,11 @@ Two things not to do:
 
 [swworker]: https://github.com/shopware/shopware/issues/13921
 
-If you install **commercial plugins**, note that the recipe's Dockerfile reads
-the packages token from a BuildKit *secret mount*
-(`--mount=type=secret,id=packages_token`), not a build arg — see the note in
-[§2](#2-get-the-image-building).
+If you install **commercial plugins**, note that the recipe's Dockerfile takes
+the packages token as `ARG SHOPWARE_PACKAGES_TOKEN`, which ends up in the
+pushed image's history. Swapping that ARG for `--mount=type=secret,id=
+packages_token,env=SHOPWARE_PACKAGES_TOKEN` (frontend >= 1.10) and passing
+`legacy_token_build_arg: false` keeps it out — see [§2](#2-get-the-image-building).
 
 [swdocker]: https://developer.shopware.com/docs/guides/hosting/installation-updates/docker.html
 
@@ -169,7 +170,7 @@ secrets are read from. Then:
 | `SSH_PRIVATE_KEY` | secret | yes | Private half of a key whose public half is in `/home/deploy/.ssh/authorized_keys` on the host. **cloud-init only imports the provider's console keys — this one you add yourself.** |
 | `DEPLOY_HOST` | variable | yes | Hostname or IP the runner SSHes to. |
 | `SSH_KNOWN_HOSTS` | variable | recommended | Output of `ssh-keyscan <host>`. Without it the deploy still runs but trusts the host key on first use and logs a warning. |
-| `BEARER_PACKAGES_SHOPWARE` | secret | only for commercial plugins | Your `packages.shopware.com` token. Passed to the build as the BuildKit secret `packages_token`, which is what the recipe's Dockerfile mounts; also passed as `SHOPWARE_PACKAGES_TOKEN` build arg for hand-written Dockerfiles that declare it. Leave unset and the build runs unauthenticated — fine until a commercial plugin is required. |
+| `BEARER_PACKAGES_SHOPWARE` | secret | only for commercial plugins | Your `packages.shopware.com` token. Passed to the build both as the BuildKit secret `packages_token` and, unless you set `legacy_token_build_arg: false`, as the `SHOPWARE_PACKAGES_TOKEN` build arg the recipe's Dockerfile declares. Prefer the secret: a build arg is recorded in the pushed image's history. Leave unset and the build runs unauthenticated — fine until a commercial plugin is required. |
 | `COMPOSER_AUTH` | secret | only for private composer sources | Contents of a composer `auth.json`, mounted into the build as the BuildKit secret `composer_auth` — which the recipe's Dockerfile mounts at `/src/auth.json`. Needed when `composer.json` pulls from a private VCS repo or a second registry, where one bearer token isn't enough. Set it to the whole file, not a bare token; an *empty* value is worse than none, so the workflow skips the mount entirely when unset. |
 
 Push once and let the build run. It publishes to

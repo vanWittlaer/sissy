@@ -99,11 +99,14 @@ jobs:
           cache-to: type=gha,mode=max
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          # The Dockerfile from `composer require shopware/docker` reads the
-          # token as a BuildKit secret -- `--mount=type=secret,id=packages_token,
-          # env=SHOPWARE_PACKAGES_TOKEN` -- so a build-arg alone never reaches
-          # `shopware-cli project ci` and commercial plugins fail to install
-          # unauthenticated. The mount id, not the env name, is what must match.
+          # The recipe's own Dockerfile (shopware/docker 0.3) takes the token
+          # as `ARG SHOPWARE_PACKAGES_TOKEN`, which is why the build-arg below
+          # still defaults on. A project that would rather not bake it into
+          # image history swaps that ARG for `--mount=type=secret,id=
+          # packages_token,env=SHOPWARE_PACKAGES_TOKEN` -- same env var, same
+          # entrypoint -- and passes legacy_token_build_arg: false. That form
+          # needs dockerfile frontend >= 1.10, so bump the syntax directive
+          # too. The mount id, not the env name, is what must match here.
           secrets: |
             packages_token=${{ secrets.BEARER_PACKAGES_SHOPWARE }}
           # Via secret-envs, not `secrets:`, because auth.json is multi-line
