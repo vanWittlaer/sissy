@@ -170,6 +170,7 @@ secrets are read from. Then:
 | `DEPLOY_HOST` | variable | yes | Hostname or IP the runner SSHes to. |
 | `SSH_KNOWN_HOSTS` | variable | recommended | Output of `ssh-keyscan <host>`. Without it the deploy still runs but trusts the host key on first use and logs a warning. |
 | `BEARER_PACKAGES_SHOPWARE` | secret | only for commercial plugins | Your `packages.shopware.com` token. Passed to the build as the BuildKit secret `packages_token`, which is what the recipe's Dockerfile mounts; also passed as `SHOPWARE_PACKAGES_TOKEN` build arg for hand-written Dockerfiles that declare it. Leave unset and the build runs unauthenticated — fine until a commercial plugin is required. |
+| `COMPOSER_AUTH` | secret | only for private composer sources | Contents of a composer `auth.json`, mounted into the build as the BuildKit secret `composer_auth` — which the recipe's Dockerfile mounts at `/src/auth.json`. Needed when `composer.json` pulls from a private VCS repo or a second registry, where one bearer token isn't enough. Set it to the whole file, not a bare token; an *empty* value is worse than none, so the workflow skips the mount entirely when unset. |
 
 Push once and let the build run. It publishes to
 `ghcr.io/<owner>/<repo>`, **lowercased** — GHCR rejects uppercase, so

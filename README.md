@@ -64,7 +64,9 @@ with it.
 
 CI also needs the secret `SSH_PRIVATE_KEY` and the variables `DEPLOY_HOST` and
 `SSH_KNOWN_HOSTS`, plus `BEARER_PACKAGES_SHOPWARE` if you build commercial
-plugins — set on GitHub **environments** named for each stack. See
+plugins and `COMPOSER_AUTH` (a whole `auth.json`) if `composer.json` reaches a
+private VCS repo or a second registry — set on GitHub **environments** named
+for each stack. See
 [ONBOARDING § Get the image building](ONBOARDING.md#2-get-the-image-building)
 for the full table and why cloud-init does not cover the deploy key.
 

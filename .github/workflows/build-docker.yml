@@ -27,6 +27,15 @@ on:
     secrets:
       BEARER_PACKAGES_SHOPWARE:
         required: false
+      COMPOSER_AUTH:
+        # Whole auth.json, mounted as the BuildKit secret `composer_auth` --
+        # the id the recipe's Dockerfile already mounts at /src/auth.json.
+        # For a project whose composer.json reaches a private VCS repo or a
+        # second registry, where one bearer token isn't enough. Left unset,
+        # nothing is mounted and composer sees no auth.json at all -- which is
+        # not the same as mounting an empty one, so the conditional below is
+        # load-bearing: empty auth.json is invalid JSON and composer aborts.
+        required: false
     outputs:
       tag:
         description: Immutable tag that was pushed — what deploy.sh should pull.
@@ -79,6 +88,8 @@ jobs:
 
       - name: Build and push Docker image
         uses: docker/build-push-action@v6
+        env:
+          COMPOSER_AUTH: ${{ secrets.COMPOSER_AUTH }}
         with:
           context: ${{ inputs.context }}
           file: ${{ inputs.dockerfile }}
@@ -95,6 +106,10 @@ jobs:
           # unauthenticated. The mount id, not the env name, is what must match.
           secrets: |
             packages_token=${{ secrets.BEARER_PACKAGES_SHOPWARE }}
+          # Via secret-envs, not `secrets:`, because auth.json is multi-line
+          # JSON full of quotes -- inlining it into the KEY=VALUE list would
+          # break that list's CSV parsing. The env below feeds it instead.
+          secret-envs: ${{ secrets.COMPOSER_AUTH != '' && 'composer_auth=COMPOSER_AUTH' || '' }}
           # Kept (behind an input, default on) for projects whose hand-written
           # Dockerfile declares `ARG SHOPWARE_PACKAGES_TOKEN`; dropping it
           # outright would break them mid-v1. Prefer the secret above and pass
