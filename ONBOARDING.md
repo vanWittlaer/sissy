@@ -126,6 +126,21 @@ Environments) — that is where the secrets are read from:
 | `BEARER_PACKAGES_SHOPWARE` | secret | commercial plugins only | Your `packages.shopware.com` token. Passed as BuildKit secret `packages_token` and, unless `legacy_token_build_arg: false`, as the `SHOPWARE_PACKAGES_TOKEN` build arg (which is recorded in image history — prefer the secret). |
 | `COMPOSER_AUTH` | secret | private composer sources only | A whole composer `auth.json` (not a bare token), mounted as BuildKit secret `composer_auth` at `/src/auth.json`. For private VCS repos or a second registry. |
 
+Creating `SSH_KNOWN_HOSTS`:
+
+```bash
+gh variable set SSH_KNOWN_HOSTS --env prod \
+  --body "$(ssh-keyscan -t ed25519 <host> 2>/dev/null)"
+```
+
+Use the **exact same host string as `DEPLOY_HOST`** — ssh matches `known_hosts`
+against what it connects to, so an IP in one and a hostname in the other fails.
+Verify you scanned the real key, not a MITM: the fingerprints from
+`ssh-keyscan -t ed25519 <host> 2>/dev/null | ssh-keygen -lf -` and, on the host,
+`ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub` must match. After a server
+rebuild the host key changes — regenerate the variable, or deploys fail with a
+host-key mismatch (that failure is the point).
+
 Push once and let the build run. It publishes to `ghcr.io/<owner>/<repo>`,
 **lowercased** (GHCR rejects uppercase). Note that exact string — it is
 `APP_IMAGE` in [§4](#4-fill-in-the-env-files).
