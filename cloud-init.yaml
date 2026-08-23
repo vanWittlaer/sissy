@@ -1,5 +1,5 @@
 #cloud-config
-# Server prep for the sissy host. Targets Ubuntu 24.04 LTS only.
+# Server prep for the sissy host. Targets Ubuntu 24.04 / 26.04 LTS.
 # Docker, a 'deploy' user, fail2ban, key-only SSH, and sissy itself cloned to
 # /opt/sissy at a pinned tag. After boot: fill in secrets, run ./bootstrap.sh.
 # Manual by design: DNS, secrets, and the network firewall (see README).

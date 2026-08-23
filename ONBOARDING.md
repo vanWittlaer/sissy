@@ -9,7 +9,7 @@ Two journeys share almost every step:
 - **Existing shop** — same setup, then [§8](#8-existing-shop-bring-your-data-across)
   replaces the fresh install with your data and [§10](#10-cutover) is the go-live.
 
-Budget half a day to a day the first time. A second server afterw   ards is
+Budget half a day to a day the first time. A second server afterwards is
 DNS + secrets + `./bootstrap.sh`.
 
 ---
@@ -70,31 +70,18 @@ can vanish in an unrelated upgrade.
 
 **3. No infrastructure sissy doesn't have.** MariaDB is the queue and lock
 store; cache and sessions are local disk. No Redis, RabbitMQ, OpenSearch or
-S3. If `composer.json` requires `shopware/elasticsearch`, set
-`SHOPWARE_ES_ENABLED=0` in `.env.local` ([§4](#4-fill-in-the-env-files))
-rather than removing the package.
+S3. Basically the shopware/production template as it ships.
 
 ---
 
 ## 1. Provision the host
 
-Ubuntu 24.04 LTS, **≥ 8 GB RAM**. Create the server with
+Ubuntu 24.04 LTS or Ubuntu 26.04 LTS, **≥ 8 GB RAM**. Create the server with
 [`cloud-init.yaml`](cloud-init.yaml) as user-data — it installs Docker and
 compose, creates the `deploy` user, the `edge` network, and fail2ban.
 
 **Attach a network-level firewall** (22/80/443 inbound, everything else
-denied) — see [README § Firewall](README.md#firewall-network-level-not-host-level)
-for the `hcloud` commands and why there is no ufw on the host.
-
-Verify SSH before closing the console tab:
-
-```bash
-grep 'ssh:' /var/log/cloud-init-output.log      # want: imported N key(s)
-ssh deploy@<host>                                # from your machine
-```
-
-A `WARNING` instead means the provider injected no keys and hardening was
-skipped so you are not locked out. Fix access before rebooting.
+denied).
 
 ---
 
@@ -151,6 +138,8 @@ The `deploy` job fails until the host is set up; expected at this point.
 ---
 
 ## 3. Clone sissy onto the host
+
+Note the below commands have already been run on the host by cloud-init.
 
 ```bash
 sudo git clone --branch v1 https://github.com/vanWittlaer/sissy.git /opt/sissy
@@ -223,9 +212,9 @@ makes stage impersonate production against app servers. See
 
 ## 5. Point DNS
 
-A-records for prod's `DOMAIN` **and** `DOMAIN_REDIRECT`, plus stage's `DOMAIN`.
-Let's Encrypt validates each host separately — a missing record for the
-redirect host means a missing certificate.
+A-records for prod's `DOMAIN` **and** `DOMAIN_REDIRECT`, plus stage's `DOMAIN`
+**and** `mailpit.<stage DOMAIN>` (stage's mail-capture UI). Let's Encrypt
+validates each host separately — a missing record means a missing certificate.
 
 Migrating a live shop? Point only **stage** here for now; production DNS moves
 in [§10](#10-cutover).
@@ -361,7 +350,8 @@ environment).
 
 Finally: log in at `/admin`, place a test order, confirm the mail arrives —
 that exercises `web`, the queue, the worker and `MAILER_DSN` in one go. On
-stage, expect the basic-auth prompt first; `/api` is deliberately exempt
+stage the mail lands in Mailpit (`https://mailpit.<stage DOMAIN>`), not a real
+inbox. Expect the basic-auth prompt first; `/api` is deliberately exempt
 (the admin's bearer token would otherwise re-prompt forever).
 
 ---

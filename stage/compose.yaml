@@ -111,6 +111,29 @@ services:
     networks:
       - internal
 
+  # Catches everything stage sends (MAILER_DSN=smtp://mailpit:1025 in
+  # .env.local) instead of delivering it. Mail lives in memory and dies with
+  # the container — on stage that is a feature. The UI needs a DNS A-record
+  # for mailpit.${DOMAIN}; Let's Encrypt validates each host separately.
+  mailpit:
+    image: axllent/mailpit:v1.31
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - internal
+      - edge
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=edge
+      - traefik.http.routers.stage-mail.rule=Host(`mailpit.${DOMAIN}`)
+      - traefik.http.routers.stage-mail.entrypoints=websecure
+      - traefik.http.routers.stage-mail.tls.certresolver=le
+      # The UI shows every captured mail (password resets included) — it stays
+      # behind the same basic-auth as the storefront.
+      - traefik.http.routers.stage-mail.middlewares=stage-auth,stage-hsts
+      - traefik.http.services.stage-mail.loadbalancer.server.port=8025
+
 networks:
   internal:
   edge:

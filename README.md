@@ -8,7 +8,7 @@ Traefik terminates TLS for a production and a stage site on the same box.
 ```
 edge/      shared Traefik (owns :80/:443, ACME)
 prod/      web + worker×2 + scheduler + mariadb
-stage/     web + worker + scheduler + mariadb   (basic-auth gated)
+stage/     web + worker + scheduler + mariadb + mailpit   (basic-auth gated)
 ```
 
 Uses the container image your project already builds (`$APP_IMAGE:<tag>`, set per
@@ -120,7 +120,8 @@ Where the ceiling is, so you can judge the fit:
 ## Requirements
 
 - **Ubuntu 24.04 LTS** host, **≥ 8 GB RAM** (two MariaDBs + ~10 containers).
-- DNS A-records for the prod and stage hostnames → this host.
+- DNS A-records for the prod and stage hostnames → this host, plus
+  `mailpit.<stage hostname>` for stage's mail-capture UI.
 - The image published where the host can pull it. GHCR packages inherit the
   repo's visibility and start **private**, so either flip the package to public
   (Packages → sissy → Package settings → Change visibility) or, as `deploy` on
