@@ -68,10 +68,10 @@ The root `.gitignore` blocks `**/.env`, `**/.env.local`, `**/data/` and `backups
 
 All `cd` to their own directory first, so they work from anywhere.
 
-`deploy.sh` passes `TAG` only for its own two compose calls — it does **not** write it to
-`$STACK/.env`. So a later bare `docker compose -f prod/compose.yaml up -d` on the host
-falls back to `.env`'s `TAG` (usually `latest`) and silently rolls the stack off the
-deployed SHA. Prefix `TAG=<sha>` on ad-hoc compose commands, or persist it in `.env`.
+`deploy.sh` records the deployed tag into `$STACK/.env` (after `up -d`, so a failed
+deploy doesn't claim the new tag). A later bare `docker compose -f prod/compose.yaml
+up -d` therefore stays on the deployed SHA instead of rolling back to `latest` —
+which matters because any `.env.local` change requires exactly that bare `up -d`.
 
 `import-db.sh` is the dev→server counterpart to `refresh-stage.sh`: drop/recreate the DB,
 pipe the dump in, run the deployment helper to migrate the dev schema up to the image's
