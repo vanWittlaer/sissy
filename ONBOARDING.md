@@ -369,7 +369,10 @@ that exercises `web`, the queue, the worker and `MAILER_DSN` in one go. On
 stage the mail lands in Mailpit (`https://mailpit.<stage DOMAIN>`, login from
 `stage/mailpit.htpasswd`), not a real inbox. Expect the storefront's basic-auth
 prompt first; `/api` is deliberately exempt
-(the admin's bearer token would otherwise re-prompt forever).
+(the admin's bearer token would otherwise re-prompt forever). Password
+recovery (`/account/recover`, admin user-recovery API) is 404 on stage on
+purpose — its users are prod's after a refresh, and the reset mail would be
+readable by anyone with Mailpit access.
 
 ---
 

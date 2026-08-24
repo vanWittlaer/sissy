@@ -66,6 +66,20 @@ services:
       - traefik.http.routers.stage-api.entrypoints=websecure
       - traefik.http.routers.stage-api.tls.certresolver=le
       - traefik.http.routers.stage-api.middlewares=stage-hsts
+      # Password recovery is 404 on stage. refresh-stage.sh copies prod's
+      # users in, and /api/_action/user/user-recovery is unauthenticated by
+      # design AND bypasses basic-auth via stage-api above — so anyone could
+      # request a reset for a real admin login and read the link in Mailpit.
+      # Rewriting to a path Shopware doesn't route makes it render its own
+      # 404 (no extra container; noop@internal would answer 418). Priority
+      # beats stage-api so the /api prefix is caught too. Proxy-level only:
+      # console commands and future recovery routes are not covered.
+      - traefik.http.routers.stage-norecover.rule=Host(`${DOMAIN}`) && (PathPrefix(`/account/recover`) || PathPrefix(`/api/_action/user/user-recovery`))
+      - traefik.http.routers.stage-norecover.priority=200
+      - traefik.http.routers.stage-norecover.entrypoints=websecure
+      - traefik.http.routers.stage-norecover.tls.certresolver=le
+      - traefik.http.routers.stage-norecover.middlewares=stage-norecover,stage-hsts
+      - traefik.http.middlewares.stage-norecover.replacepath.path=/__recovery-disabled
 
   worker:
     <<: *app
