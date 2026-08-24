@@ -129,10 +129,22 @@ services:
       - traefik.http.routers.stage-mail.rule=Host(`mailpit.${DOMAIN}`)
       - traefik.http.routers.stage-mail.entrypoints=websecure
       - traefik.http.routers.stage-mail.tls.certresolver=le
-      # The UI shows every captured mail (password resets included) — it stays
-      # behind the same basic-auth as the storefront.
-      - traefik.http.routers.stage-mail.middlewares=stage-auth,stage-hsts
+      # No stage-auth here: the UI shows every captured mail (password resets
+      # included), so it is guarded by Mailpit's OWN basic-auth below — the
+      # mailbox credentials are independent of the storefront's BASIC_AUTH,
+      # and the guard survives even if this router's middlewares change.
+      - traefik.http.routers.stage-mail.middlewares=stage-hsts
       - traefik.http.services.stage-mail.loadbalancer.server.port=8025
+    environment:
+      # htpasswd file (bcrypt/apr1/sha/plain all accepted). A FILE, not
+      # MP_UI_AUTH=${...}: the hash never passes through compose interpolation,
+      # so no '$$' doubling — a single '$' is correct there. Covers UI + its
+      # API on :8025; SMTP on :1025 stays open on `internal`, as intended.
+      MP_UI_AUTH_FILE: /mailpit.htpasswd
+    volumes:
+      # Bind-mounted single file: must exist before `up` or Docker creates a
+      # directory and Mailpit refuses to start. bootstrap.sh checks for it.
+      - ./mailpit.htpasswd:/mailpit.htpasswd:ro
 
 networks:
   internal:

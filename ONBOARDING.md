@@ -200,6 +200,7 @@ The values that need thought:
 | `DOMAIN` | `.env` | Canonical host. Prod also has `DOMAIN_REDIRECT` (the other of www/bare), which gets its own certificate and 301s to `DOMAIN`. |
 | `DB_PASSWORD`, `DB_ROOT_PASSWORD` | `.env` | Must also appear, spelled out, in `.env.local`'s `DATABASE_URL` and `LOCK_DSN`. |
 | `BASIC_AUTH` | `stage/.env` | `htpasswd -nb user pass`, then **double every `$` to `$$`** — compose interpolation eats single ones and auth silently breaks. |
+| — | `stage/mailpit.htpasswd` | Mailpit UI login, independent of `BASIC_AUTH`: `htpasswd -nbB user pass > stage/mailpit.htpasswd`. Single `$` — this file is bind-mounted, not interpolated. `bootstrap.sh` refuses to start stage without it (Mailpit would crash-loop). |
 | `ACME_EMAIL` | `edge/.env` | Let's Encrypt contact. `edge` has no `.env.local`. |
 | `APP_URL` | `.env.local` | `https://` + your `DOMAIN`. Must agree with `sales_channel_domain.url` or the shop redirects in circles. |
 | `SYMFONY_TRUSTED_PROXIES` | `.env.local` | Leave at `0.0.0.0/0`. Without it every asset URL comes out `http://` and browsers block it. Note the `SYMFONY_` prefix — a bare `TRUSTED_PROXIES` is read by nothing. Safe only because no app port is published. |
@@ -365,8 +366,9 @@ environment).
 
 Finally: log in at `/admin`, place a test order, confirm the mail arrives —
 that exercises `web`, the queue, the worker and `MAILER_DSN` in one go. On
-stage the mail lands in Mailpit (`https://mailpit.<stage DOMAIN>`), not a real
-inbox. Expect the basic-auth prompt first; `/api` is deliberately exempt
+stage the mail lands in Mailpit (`https://mailpit.<stage DOMAIN>`, login from
+`stage/mailpit.htpasswd`), not a real inbox. Expect the storefront's basic-auth
+prompt first; `/api` is deliberately exempt
 (the admin's bearer token would otherwise re-prompt forever).
 
 ---

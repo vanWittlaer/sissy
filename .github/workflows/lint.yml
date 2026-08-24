@@ -31,7 +31,7 @@ jobs:
             # The examples are the fixture: a compose file that grows a new
             # ${VAR:?} without a matching .env.example line fails right here
             # instead of on a host. env_file must exist too, or config errors.
-            for f in .env .env.local; do
+            for f in .env .env.local mailpit.htpasswd; do
               if [ -f "$stack/$f.example" ]; then cp "$stack/$f.example" "$stack/$f"; fi
             done
             echo "==> $stack"

@@ -8,7 +8,7 @@ Traefik terminates TLS for a production and a stage site on the same box.
 ```
 edge/      shared Traefik (owns :80/:443, ACME)
 prod/      web + worker×2 + scheduler + mariadb
-stage/     web + worker + scheduler + mariadb + mailpit   (basic-auth gated)
+stage/     web + worker + scheduler + mariadb + mailpit   (basic-auth gated; mailpit has its own)
 ```
 
 Uses the container image your project already builds (`$APP_IMAGE:<tag>`, set per
@@ -207,7 +207,8 @@ reads that:
 ├── prod/.env           TAG, DOMAIN, DB_PASSWORD, DB_ROOT_PASSWORD
 ├── prod/.env.local     APP_SECRET, INSTANCE_ID, DATABASE_URL, LOCK_DSN, MAILER_DSN
 ├── stage/.env          ... the same, plus BASIC_AUTH
-└── stage/.env.local
+├── stage/.env.local
+└── stage/mailpit.htpasswd  Mailpit UI login (bind-mounted file, NOT interpolated: single '$')
 ```
 
 Both must be siblings of their `compose.yaml`: `env_file: .env.local` resolves
@@ -248,7 +249,9 @@ existing shop's data across.
    did someone hand-edit at 3am?) work.
 3. **Fill in secrets:** for `edge`, `prod`, `stage`, copy the `*.example`
    files and edit. For stage's `BASIC_AUTH`: `htpasswd -nb user pass`, then
-   **double every `$` to `$$`**.
+   **double every `$` to `$$`**. For stage's Mailpit UI:
+   `htpasswd -nbB user pass > stage/mailpit.htpasswd` — a plain file, **no**
+   doubling; it is mounted into the container, not templated.
 4. **Point DNS** at the host.
 5. **Bootstrap:**
    ```bash

@@ -47,6 +47,18 @@ require_env() {
   # MariaDB runs as uid 999 and skips a file it cannot read — and refuses one
   # that is group/world writable. Both silently. 0644 is the only mode that works.
   $SUDO chmod 644 "$dir/mariadb.cnf"
+  # Same trap for stage's Mailpit UI password file. Unlike mariadb.cnf the
+  # failure is loud (Mailpit exits: "HTTP password file not found") but under
+  # restart: unless-stopped that is a crash-loop reading as "Restarting".
+  if grep -q 'MP_UI_AUTH_FILE' "$dir/compose.yaml"; then
+    [[ -f "$dir/mailpit.htpasswd" ]] || {
+      echo "ERROR: $dir/mailpit.htpasswd missing or not a regular file" >&2
+      echo "       create it with: htpasswd -nbB user pass > $dir/mailpit.htpasswd" >&2
+      echo "       (single '\$' — no doubling; if Docker created a directory there, rmdir it first)" >&2
+      exit 1
+    }
+    $SUDO chmod 644 "$dir/mailpit.htpasswd"
+  fi
   [[ $missing -eq 0 ]] || echo "  ^ compare against $dir/*.example before continuing" >&2
 }
 

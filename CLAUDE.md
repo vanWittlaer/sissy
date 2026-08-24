@@ -49,6 +49,8 @@ Adding a variable that the app or compose genuinely needs means touching three p
 
 Stage's `BASIC_AUTH` htpasswd hash goes through compose interpolation, so **every `$` must be doubled to `$$`** (`htpasswd -nb user pass`, then double). Forgetting this silently breaks auth. A second higher-priority router exempts `PathPrefix(/api)` from that middleware: the admin sends `Authorization: Bearer`, which replaces the Basic credentials, so basicauth 401s and the browser re-prompts forever. Shopware's OAuth guards `/api` on its own — don't "fix" the hole by adding the middleware back.
 
+Stage has a third gitignored secret file, `stage/mailpit.htpasswd`, bind-mounted read-only into the `mailpit` container as `MP_UI_AUTH_FILE`. Mailpit guards its own UI/API with it (any htpasswd hash; SMTP on `:1025` is unaffected), so the `stage-mail` Traefik router carries only `stage-hsts`, **not** `stage-auth` — mailbox credentials are deliberately decoupled from the storefront's `BASIC_AUTH`. Because it is a mounted file, not a compose variable, its `$` are **single**, not doubled. It shares `mariadb.cnf`'s trap: absent at `up`, Docker creates a directory and Mailpit crash-loops, so `bootstrap.sh:require_env` refuses to start without it. An existing stage host upgrading to this tag must create the file first.
+
 Stage also runs `APP_ENV=stage` (Shopware's staging mode), which is why `.env.local` pins `APP_DEBUG=0` — anything but `prod` turns debug on by default in `public/index.php`.
 
 The root `.gitignore` blocks `**/.env`, `**/.env.local`, `**/data/` and `backups/` — only the `*.example` files are ever committed. On a host this is load-bearing, not hygiene: it is why `/opt/sissy` can be a git clone whose secrets and data survive checking out a different tag.
