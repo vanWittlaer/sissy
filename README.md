@@ -8,7 +8,7 @@ Traefik terminates TLS for a production and a stage site on the same box.
 ```
 edge/      shared Traefik (owns :80/:443, ACME)
 prod/      web + worker×2 + scheduler + mariadb
-stage/     web + worker + scheduler + mariadb + mailpit   (basic-auth gated; mailpit has its own)
+stage/     web + worker + scheduler + mariadb + mailpit   (basic-auth gated except /api, /media, /thumbnail; mailpit has its own)
 ```
 
 Uses the container image your project already builds (`$APP_IMAGE:<tag>`, set per

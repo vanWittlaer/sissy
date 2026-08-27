@@ -66,6 +66,16 @@ services:
       - traefik.http.routers.stage-api.entrypoints=websecure
       - traefik.http.routers.stage-api.tls.certresolver=le
       - traefik.http.routers.stage-api.middlewares=stage-hsts
+      # /media and /thumbnail are exempt too: dompdf inside `web` fetches
+      # document logos and product images by their public URL, and cannot
+      # answer basic-auth, so every PDF rendered on stage came out imageless.
+      # Same files prod serves anonymously (stage's media is prod's copy);
+      # files/ (invoices, exports) is not under these prefixes and stays gated.
+      - traefik.http.routers.stage-media.rule=Host(`${DOMAIN}`) && (PathPrefix(`/media`) || PathPrefix(`/thumbnail`))
+      - traefik.http.routers.stage-media.priority=100
+      - traefik.http.routers.stage-media.entrypoints=websecure
+      - traefik.http.routers.stage-media.tls.certresolver=le
+      - traefik.http.routers.stage-media.middlewares=stage-hsts
       # Password recovery is 404 on stage. refresh-stage.sh copies prod's
       # users in, and /api/_action/user/user-recovery is unauthenticated by
       # design AND bypasses basic-auth via stage-api above — so anyone could
