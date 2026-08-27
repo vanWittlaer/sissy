@@ -351,14 +351,21 @@ fine for trying the scripts out but is not where you want your only copy of prod
 data. `BACKUP_KEEP` (default `7`) is how many timestamped backups per stack `backup.sh`
 keeps before deleting the oldest.
 
-Wire it up with cron **as root** on the host. Not a precaution: Shopware writes
+Wire it up with cron **as `deploy`** on the host, not root. Shopware writes
 `files/theme-config/` at mode 0700 with 0600 contents (private-filesystem visibility,
-recreated on every theme compile), so nothing but UID 82 or root can read it and `tar`
-aborts. The script falls back to `sudo` when run as a user, which cron can't answer.
+recreated on every theme compile), so nothing but UID 82 or root can read it — which
+is why the script `sudo`s its `tar` and its rotation `rm`; cloud-init gave `deploy`
+passwordless sudo, so cron never needs to answer a prompt. Everything the script
+*writes* it writes as the invoking user (tar streams to stdout, the shell owns the
+redirect), so a deploy-run backup is `deploy`-owned, mode 600 — readable and `scp`-able
+by the only account that can log in. Run it as root and the whole tree is root:root 600,
+which nobody can fetch.
 
-```
-# /etc/cron.d/sissy-backup
-0 3 * * * root BACKUP_ROOT=/mnt/backup/sissy /opt/sissy/backup.sh prod >> /var/log/sissy-backup.log 2>&1
+```bash
+sudo install -d -m 700 -o deploy -g deploy /mnt/backup/sissy
+sudo tee /etc/cron.d/sissy-backup <<'EOF'
+0 3 * * * deploy BACKUP_ROOT=/mnt/backup/sissy /opt/sissy/backup.sh prod >> /mnt/backup/sissy/backup.log 2>&1
+EOF
 ```
 
 A run that fails part-way deletes its own timestamped directory, so a half-written

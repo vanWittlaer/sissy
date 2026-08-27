@@ -412,14 +412,19 @@ Only for an existing shop, once stage has proven the import works.
 
 Set up while it is fresh:
 
-- **Backups on a timer, as root**, pointed at a real mounted volume (root
-  because Shopware writes `files/theme-config/` mode 0700, so `tar` aborts
-  otherwise):
-  ```
-  # /etc/cron.d/sissy-backup
-  0 3 * * * root BACKUP_ROOT=/mnt/backup/sissy /opt/sissy/backup.sh prod >> /var/log/sissy-backup.log 2>&1
+- **Backups on a timer, as `deploy`**, pointed at a real mounted volume.
+  Run it as `deploy`, not root: the script `sudo`s only the two steps that
+  need it (reading UID 82's `files/`, rotating), and cloud-init gave `deploy`
+  passwordless sudo — so every file it writes is `deploy`-owned and mode 600,
+  which is what lets you `scp` a backup off a box where root can't log in.
+  ```bash
+  sudo install -d -m 700 -o deploy -g deploy /mnt/backup/sissy
+  sudo tee /etc/cron.d/sissy-backup <<'EOF'
+  0 3 * * * deploy BACKUP_ROOT=/mnt/backup/sissy /opt/sissy/backup.sh prod >> /mnt/backup/sissy/backup.log 2>&1
+  EOF
   ```
   Then **test a restore into stage** — an untested backup is a hypothesis.
+  Fetch one with `scp -r deploy@<host>:/mnt/backup/sissy/prod/<timestamp> .`
 - **Upgrading sissy** is `git -C /opt/sissy checkout v1.1` +
   `./bootstrap.sh`. Read the release notes first; `.env`, `.env.local` and
   `data/` are untracked and come through untouched.

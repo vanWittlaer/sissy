@@ -64,9 +64,14 @@ trap cleanup EXIT
 
 # tar exits 1 for "file changed as we read it", which is routine on a live shop
 # and no reason to throw the whole backup away. 2 and up are real failures.
+#
+# tar writes to stdout and THIS shell does the redirect, so the archive is
+# owned by whoever ran the script -- sudo is only needed to read UID 82's
+# files. Letting `sudo tar -f FILE` create it leaves a root:root 600 file
+# the invoking user can't read back (or scp) on a host with root disabled.
 tar_live() {
-  local rc=0
-  $SUDO tar --numeric-owner -czf "$@" || rc=$?
+  local out=$1 rc=0; shift
+  $SUDO tar --numeric-owner -cz "$@" > "$out" || rc=$?
   ((rc <= 1)) || return "$rc"
   ((rc == 0)) || echo "    note: files changed while archiving (tar warning); archive is still usable" >&2
 }
