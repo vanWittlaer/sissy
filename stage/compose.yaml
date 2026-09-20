@@ -115,7 +115,12 @@ services:
       disable: true
 
   database:
-    image: mariadb:11.8
+    # Overridable per host via MARIADB_VERSION in .env — stage may run ahead of
+    # prod on purpose, to rehearse a DB upgrade before prod takes it. The image
+    # does NOT upgrade an existing data dir on its own — after raising the
+    # version, run mariadb-upgrade in the container (or set
+    # MARIADB_AUTO_UPGRADE=1 for one start).
+    image: mariadb:${MARIADB_VERSION:-11.8}
     security_opt:
       - no-new-privileges:true
     environment:
