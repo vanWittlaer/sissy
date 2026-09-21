@@ -407,6 +407,12 @@ the DB and both archives, `chown`s them back to `82:82`, then `up -d`.
   leaves the container crash-looping while `docker ps` still says "Up".
 - **Workers must consume `async` AND `low_priority`** — separate Doctrine queues;
   dropping `low_priority` silently strands those messages.
+- **Traefik's access log goes to stdout as JSON**, prod and stage together
+  (`RequestHost` tells them apart); Docker rotates it at 5×50 MB.
+  ```bash
+  docker compose -f edge/compose.yaml logs --no-log-prefix -f traefik | grep --line-buffered '{' \
+    | jq -r '[.time, .ClientHost, .RequestHost, .RequestMethod, .RequestPath, .DownstreamStatus] | @tsv'
+  ```
 - **Backups are `./backup.sh <stack>`**, see [Backups](#backups) below — there is
   still no backup *container*, it's a plain script you put on a timer.
 - **Recovery record** is this directory + git. Lost host → re-run cloud-init +

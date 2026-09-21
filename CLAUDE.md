@@ -117,6 +117,8 @@ docker compose -f prod/compose.yaml exec -T web php bin/console debug:container 
 curl -s https://<domain>/admin | grep -o 'src="[^"]*"' | head   # server-side truth, no browser cache
 ```
 
+Traefik's **access log** is on, to stdout as JSON (`--accesslog.format=json`), so it lands in `docker compose -f edge/compose.yaml logs traefik` next to Traefik's own plain-text lines. `User-Agent` and `Referer` are kept explicitly — Traefik drops all request headers by default, which leaves both blank. It is deliberately *not* a file under `edge/data/`: Traefik doesn't rotate its own files, so that would need logrotate plus a `USR1` signal, whereas stdout is rotated by Docker. The `traefik` service therefore carries its own `logging:` block (5×50 MB) — the daemon-wide 3×10 MB from `cloud-init.yaml` is too small for an access log, and a host not built from cloud-init may have no limit at all.
+
 ### Firewall
 
 **There is deliberately no host firewall — don't add one back.** ufw/iptables filter the `INPUT` chain, but dockerd DNATs published ports in `nat/PREROUTING` and routes them through `FORWARD`, so every `ports:` mapping stays reachable regardless of the rules. A host firewall here would protect sshd only while appearing to protect everything, which is worse than none.
