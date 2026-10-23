@@ -20,7 +20,7 @@ This was `sissy/` inside the vanWittlaer/sissy monorepo until 2026-08-12, split 
 Three compose stacks on one VPS, joined by an external Docker network named `edge`:
 
 ```
-edge/      Traefik v3.3 — owns :80/:443, ACME TLS, docker provider (exposedbydefault=false)
+edge/      Traefik v3.7 — owns :80/:443, ACME TLS, docker provider (exposedbydefault=false)
 prod/      web + worker×2 + scheduler + mariadb
 stage/     web + worker + scheduler + mariadb   (Traefik basic-auth middleware)
 ```

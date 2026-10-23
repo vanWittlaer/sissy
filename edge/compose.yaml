@@ -2,7 +2,7 @@ name: shop-edge
 
 services:
   traefik:
-    image: traefik:v3.7.10
+    image: traefik:v3.7.16
     command:
       - --providers.docker=true
       - --providers.docker.exposedbydefault=false
