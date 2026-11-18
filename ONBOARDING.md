@@ -69,8 +69,8 @@ It arrives transitively via `shopware/docker`, but every deploy depends on it
 can vanish in an unrelated upgrade.
 
 **3. No infrastructure sissy doesn't have.** MariaDB is the queue and lock
-store; cache and sessions are local disk. No Redis, RabbitMQ, OpenSearch or
-S3. Basically the shopware/production template as it ships.
+store; cache and sessions are local disk (sessions persist in `data/sessions`).
+No Redis, RabbitMQ, OpenSearch or S3. Basically the shopware/production template as it ships.
 
 ---
 

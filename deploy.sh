@@ -31,6 +31,15 @@ fi
 # below — refuse anything that isn't a plain docker tag before using it.
 [[ "$TAG" =~ ^[A-Za-z0-9_][A-Za-z0-9_.-]*$ ]] || { echo "ERROR: '$TAG' is not a valid image tag" >&2; exit 1; }
 
+# Hosts bootstrapped before data/sessions existed don't have it, and `up -d`
+# would let Docker create it root-owned: PHP (UID 82) then can't write a
+# session and the storefront breaks. Mirror bootstrap.sh:prep_dirs for it.
+if [[ ! -d "$STACK/data/sessions" ]]; then
+  SUDO=""; [[ $EUID -ne 0 ]] && SUDO="sudo"
+  echo "==> Creating $STACK/data/sessions (owned by UID 82)"
+  $SUDO install -d -o 82 -g 82 "$STACK/data/sessions"
+fi
+
 echo "==> Deploying $STACK @ $TAG (from $TAG_SRC)"
 # Pull only the app image: web/worker/scheduler/setup share it, so one pull
 # fetches it for all — and a freshly published mariadb patch image doesn't get

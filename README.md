@@ -85,6 +85,7 @@ visible".
 | `theme`     | `public/theme`         | `theme:compile`  | regenerable |
 | `sitemap`   | `public/sitemap`       | worker (task)    | regenerable |
 | `log`       | `var/log`              | all              | logs |
+| `sessions`  | `var/sessions`         | web              | shoppers re-login (GC: `php-session.ini`) |
 | `mysql`     | mariadb datadir        | mariadb          | **data loss** |
 
 Deliberately *not* mounted: `public/bundles` (baked at build by `assets:install`
@@ -109,13 +110,15 @@ whole thing reads top to bottom in an afternoon.
 
 Where the ceiling is, so you can judge the fit:
 
-- **`web` stays at 1 replica.** Filesystem cache and native sessions are
-  per-container; workers scale freely. A second web node means introducing Redis
+- **`web` stays at 1 replica.** Filesystem cache is per-container and native
+  sessions are files on the host (`data/sessions`, so they survive deploys);
+  workers scale freely. A second web node means introducing Redis
   first — a good problem to have, and a small change when you get there.
 - **No search cluster.** Shopware's MySQL search is fine well past the point
   most shops assume; OpenSearch is the answer when it isn't.
 - **Deploys are not zero-downtime.** The `setup` container migrates before the
-  app containers start, so the ordering is safe, but `web` restarts.
+  app containers start, so the ordering is safe, but `web` restarts. Shoppers
+  stay logged in across it; requests in flight during the swap fail.
 
 ## Requirements
 
@@ -341,7 +344,7 @@ charset conversion; `--routines --events --triggers` catch schema objects a plug
 have left that the default flags skip.
 
 Not covered, on purpose: `thumbnail`/`theme`/`sitemap` regenerate themselves (see the
-table above), and secrets (`.env`, `.env.local`, `mariadb.cnf`) are gitignored/host-only
+table above), `sessions` only cost a re-login, and secrets (`.env`, `.env.local`, `mariadb.cnf`) are gitignored/host-only
 and out of scope for this rotation — back those up separately (a password manager or
 secrets vault, not a data-backup cron job).
 

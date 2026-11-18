@@ -73,7 +73,7 @@ prep_dirs() {
   # image's own user (uid 999). chown it to 82 and MariaDB starts but cannot
   # create tables -- "errno: 13 Permission denied" — leaving a half-written
   # data dictionary behind.
-  local app_dirs=(media thumbnail theme sitemap files log)
+  local app_dirs=(media thumbnail theme sitemap files log sessions)
   mkdir -p "${app_dirs[@]/#/$dir/data/}" "$dir/data/mysql"
   $SUDO chown -R 82:82 "${app_dirs[@]/#/$dir/data/}"
 }

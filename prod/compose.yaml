@@ -23,6 +23,10 @@ x-app: &app
 #   theme            theme:compile output (paired with files/theme-config)
 #   sitemap          written by the worker's scheduled task, served by web
 #   files            PRIVATE filesystem: invoice PDFs, import/export, theme-config
+#   sessions         native PHP session files, plus the ini that turns on their
+#                    GC. Only web uses them; mounting everywhere keeps one list.
+#                    Outside the container, so a deploy (which recreates web)
+#                    no longer logs every shopper out and orphans guest carts.
 # Deliberately NOT here:
 #   public/bundles   baked at build by assets:install -- bind-mounting an empty
 #                    host dir over it would HIDE the image's copy (bind mounts
@@ -35,6 +39,8 @@ x-app-volumes: &app-volumes
   - ./data/sitemap:/var/www/html/public/sitemap
   - ./data/files:/var/www/html/files
   - ./data/log:/var/www/html/var/log
+  - ./data/sessions:/var/www/html/var/sessions
+  - ../php-session.ini:/usr/local/etc/php/conf.d/zz-sissy-session.ini:ro
 
 services:
   # Install-or-migrate before any app container starts. Runs to completion and
@@ -52,6 +58,11 @@ services:
     <<: *app
     environment:
       LOG_FILE: web
+      # docker-base templates both into its php.ini. Shopware leaves
+      # framework.session.handler_id unset, so PHP's own handler is the one used.
+      PHP_SESSION_SAVE_PATH: /var/www/html/var/sessions
+      # Idle timeout, seconds. Enforced by the GC php-session.ini switches on.
+      PHP_SESSION_GC_MAXLIFETIME: ${SESSION_LIFETIME:-86400}
     volumes: *app-volumes
     networks:
       - internal

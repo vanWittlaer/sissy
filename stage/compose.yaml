@@ -16,7 +16,8 @@ x-app: &app
     - internal
 
 # See prod/compose.yaml for why each of these is shared between web and worker,
-# and why public/bundles and var/cache are deliberately absent.
+# and why public/bundles and var/cache are deliberately absent, and for the
+# sessions mount and the root php-session.ini it carries.
 x-app-volumes: &app-volumes
   - ./data/media:/var/www/html/public/media
   - ./data/thumbnail:/var/www/html/public/thumbnail
@@ -24,6 +25,8 @@ x-app-volumes: &app-volumes
   - ./data/sitemap:/var/www/html/public/sitemap
   - ./data/files:/var/www/html/files
   - ./data/log:/var/www/html/var/log
+  - ./data/sessions:/var/www/html/var/sessions
+  - ../php-session.ini:/usr/local/etc/php/conf.d/zz-sissy-session.ini:ro
 
 services:
   setup:
@@ -39,6 +42,9 @@ services:
     <<: *app
     environment:
       LOG_FILE: web
+      # Persistent sessions — see prod/compose.yaml.
+      PHP_SESSION_SAVE_PATH: /var/www/html/var/sessions
+      PHP_SESSION_GC_MAXLIFETIME: ${SESSION_LIFETIME:-86400}
     volumes: *app-volumes
     networks:
       - internal
